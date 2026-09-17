@@ -1,0 +1,6 @@
+pandas>=2.2
+openpyxl>=3.1
+duckdb>=1.1
+streamlit>=1.40
+python-dotenv>=1.0
+openai>=1.40           # used to talk to Groq

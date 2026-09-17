@@ -1,0 +1,51 @@
+employee_id,project,client,technologies,project_type
+2020010,ACT Power,ACT Power Services,,main
+2020010,Circana,Circana,,main
+2020014,NovaBio,NovaBio,"Fabric, DevOps",main
+2020011,NovaBio,NovaBio,"Fabric, DevOps",main
+2020011,L&T,L&T,,support
+2020020,L&T,L&T,,main
+2020066,Circana,Circana,,main
+2020066,ACT Power,ACT Power Services,Source Data Collection,support
+2020059,Metronic,Metronic,Snowflake,main
+2020059,Articul8,Articul8,"Data collection , Labeling",main
+2020080,NovaBio,NovaBio,,main
+2020063,ACT Power,ACT Power Services,"Databricks, Azure",main
+2020093,Articul8,Articul8,"Data collection , Labeling",main
+2020093,ACT Power,ACT Power Services,Source Data Collection,support
+2020079,Articul8,Articul8,"Data collection , Labeling",main
+2020079,ACT Power,ACT Power Services,Source Data Collection,support
+2020118,Articul8,Articul8,"Data collection , Labeling,",main
+2020118,Phibro Genie,Phibro,,main
+2020118,ACT Power,ACT Power Services,Source Data Collection and DevOps,support
+2020119,Articul8,Articul8,"Data collection , Labeling",main
+2020119,ACT Power,ACT Power Services,Source Data Collection,support
+2020117,Circana,Circana,,main
+2020115,Phibro,Phibro,,main
+2020115,Circana,Circana,,main
+2020127,ACT Power,ACT Power Services,Source Data Collection,support
+2020085,L&T,L&T,,main
+2020027,Phibro,Phibro,"Zoho CRM, Zoho Analytics,",main
+2020084,Metronic,Metronic,"Power BI, Snowflake",main
+2020038,Phibro Genie,Phibro,,main
+2020083,ACT Power,ACT Power Services,"Databricks, Azure",main
+2020087,Phibro,Phibro,"Zoho CRM, Zoho Analytics,",main
+2020076,NovaBio,NovaBio,Microsoft Fabric,main
+2020058,Metronic,Metronic,"Power BI, Snowflake",main
+2020120,Phibro,Phibro,,main
+2020009,Phibro,Phibro,"Databricks, Azure",main
+2020016,DataPatron,DataPattern (internal),,main
+2020016,Employee Portal,DataPattern (internal),,main
+2020013,ACT Power,ACT Power Services,"Databricks, Azure",main
+2020116,Phibro,Phibro,"Databricks, Azure",main
+2020103,HMH,HMH,,main
+2020107,HMH,HMH,,main
+2020104,HMH,HMH,,main
+2020105,Planet,Planet,,main
+2020106,HMH,HMH,,main
+2020037,HMH,HMH,,main
+2020077,ACT Power,ACT Power Services,,main
+2020062,DataPatron,DataPattern (internal),,main
+2020075,DataPatron,DataPattern (internal),,main
+2020075,L&T,L&T,,main
+2020129,DataPatron,DataPattern (internal),,main

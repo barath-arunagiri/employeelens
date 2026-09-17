@@ -1,0 +1,535 @@
+employee_id,skill,category,qualifier,source
+2020009,Power BI,BI,,skills
+2020009,Tableau,BI,,skills
+2020009,Microsoft Azure,Cloud,,skills
+2020009,MySQL,Database,,skills
+2020009,CSS,Language,,skills
+2020009,HTML,Language,,skills
+2020009,Python,Language,,skills
+2020009,SQL,Language,,skills
+2020009,Databricks,Platform,,skills
+2020009,Jupyter,Tool,,skills
+2020009,SSIS,Tool,,skills
+2020010,Power BI,BI,,skills
+2020010,Tableau,BI,,skills
+2020010,Microsoft Azure,Cloud,,skills
+2020010,Azure SQL Database,Database,,skills
+2020010,MySQL,Database,,skills
+2020010,Sybase,Database,,skills
+2020010,PySpark,Language,,skills
+2020010,SQL,Language,,skills
+2020010,Databricks,Platform,,skills
+2020010,SAP Analytics Cloud,Platform,,skills
+2020010,Snowflake,Platform,,skills
+2020010,DBeaver,Tool,,skills
+2020010,Google Colab,Tool,,skills
+2020010,Jupyter,Tool,,skills
+2020011,MicroStrategy,BI,,skills
+2020011,Power BI,BI,,skills
+2020011,Tableau,BI,,skills
+2020011,AWS,Cloud,,skills
+2020011,Microsoft Azure,Cloud,,skills
+2020011,Azure SQL Database,Database,,skills
+2020011,MongoDB,Database,,skills
+2020011,MySQL,Database,,skills
+2020011,SQL Server,Database,,skills
+2020011,Sybase,Database,,skills
+2020011,CSS,Language,,skills
+2020011,HTML,Language,,skills
+2020011,PySpark,Language,,skills
+2020011,Python,Language,,skills
+2020011,SQL,Language,,skills
+2020011,Databricks,Platform,,skills
+2020011,Microsoft Fabric,Platform,,project
+2020011,Azure DevOps,Tool,,project
+2020011,DBeaver,Tool,,skills
+2020011,Jupyter,Tool,,skills
+2020011,Zoho CRM,Tool,,skills
+2020013,Power BI,BI,,skills
+2020013,Microsoft Azure,Cloud,,skills
+2020013,MySQL,Database,,skills
+2020013,CSS,Language,,skills
+2020013,HTML,Language,,skills
+2020013,Python,Language,,skills
+2020013,Databricks,Platform,,skills
+2020014,Power BI,BI,,skills
+2020014,Tableau,BI,,skills
+2020014,Microsoft Azure,Cloud,,skills
+2020014,Azure SQL Database,Database,,skills
+2020014,MySQL,Database,,skills
+2020014,Sybase,Database,,skills
+2020014,PySpark,Language,,skills
+2020014,SQL,Language,,skills
+2020014,Databricks,Platform,,skills
+2020014,Microsoft Fabric,Platform,,project
+2020014,SAP Analytics Cloud,Platform,,skills
+2020014,Snowflake,Platform,,skills
+2020014,Azure DevOps,Tool,,project
+2020014,DBeaver,Tool,,skills
+2020014,Google Colab,Tool,,skills
+2020014,Jupyter,Tool,,skills
+2020016,MongoDB,Database,,skills
+2020016,MySQL,Database,,skills
+2020016,PostgreSQL,Database,,skills
+2020016,Adobe Photoshop,Design,,skills
+2020016,Adobe XD,Design,,skills
+2020016,Canva,Design,,skills
+2020016,Figma,Design,,skills
+2020016,Angular,Language,,skills
+2020016,CSS,Language,,skills
+2020016,HTML,Language,,skills
+2020016,Java,Language,,skills
+2020016,JavaScript,Language,,skills
+2020016,React,Language,,skills
+2020016,Spring Boot,Language,,skills
+2020016,Bitbucket,Tool,,skills
+2020016,Git,Tool,,skills
+2020016,JUnit,Tool,,skills
+2020016,Katalon,Tool,,skills
+2020016,Selenium,Tool,,skills
+2020020,Power BI,BI,,skills
+2020020,Microsoft Azure,Cloud,,skills
+2020020,MongoDB,Database,,skills
+2020020,MySQL,Database,,skills
+2020020,SQL Server,Database,,skills
+2020020,Canva,Design,,skills
+2020020,PySpark,Language,,skills
+2020020,Python,Language,,skills
+2020020,SQL,Language,,skills
+2020020,Databricks,Platform,,skills
+2020020,Jupyter,Tool,,skills
+2020027,Zoho Analytics,BI,,project
+2020027,MongoDB,Database,,skills
+2020027,MySQL,Database,,skills
+2020027,Angular,Language,,skills
+2020027,Bootstrap,Language,,skills
+2020027,CSS,Language,,skills
+2020027,HTML,Language,,skills
+2020027,Java,Language,,skills
+2020027,JavaScript,Language,,skills
+2020027,React,Language,,skills
+2020027,Spring Boot,Language,,skills
+2020027,Firebase,Platform,,skills
+2020027,JotForm,Tool,,project
+2020027,Zoho CRM,Tool,,project
+2020037,MySQL,Database,,skills
+2020037,Adobe InDesign,Design,,skills
+2020037,Adobe XD,Design,,skills
+2020037,Canva,Design,,skills
+2020037,Figma,Design,,skills
+2020037,Angular,Language,,skills
+2020037,Bootstrap,Language,,skills
+2020037,CSS,Language,,skills
+2020037,HTML,Language,,skills
+2020037,Java,Language,,skills
+2020037,JavaScript,Language,,skills
+2020037,Node.js,Language,,skills
+2020037,Python,Language,,skills
+2020037,React,Language,,skills
+2020037,Spring Boot,Language,,skills
+2020037,Tailwind CSS,Language,,skills
+2020037,Git,Tool,,skills
+2020037,WordPress,Tool,,skills
+2020038,Power BI,BI,Basics covered,skills
+2020038,Microsoft Azure,Cloud,,skills
+2020038,MySQL,Database,,skills
+2020038,PostgreSQL,Database,,skills
+2020038,Adobe Illustrator,Design,,skills
+2020038,Adobe Photoshop,Design,,skills
+2020038,Adobe Premiere Pro,Design,,skills
+2020038,Colour Theory,Design,,skills
+2020038,Figma,Design,,skills
+2020038,Logo Design,Design,,skills
+2020038,Market Research,Design,,skills
+2020038,Poster Design,Design,,skills
+2020038,Prototyping,Design,,skills
+2020038,Typography,Design,,skills
+2020038,UI Design,Design,,skills
+2020038,UI/UX Design,Design,,skills
+2020038,UX Design,Design,,skills
+2020038,User Research,Design,,skills
+2020038,Wireframing,Design,,skills
+2020038,PySpark,Language,,skills
+2020038,Python,Language,,skills
+2020038,SQL,Language,,skills
+2020038,Databricks,Platform,,skills
+2020038,Azure Data Factory,Tool,,skills
+2020049,Computer Vision,AI,,skills
+2020049,Copilot Studio,AI,,skills
+2020049,Deep Learning,AI,,skills
+2020049,FAISS,AI,,skills
+2020049,Generative AI,AI,,skills
+2020049,Hugging Face,AI,,skills
+2020049,Keras,AI,,skills
+2020049,LlamaIndex,AI,,skills
+2020049,Machine Learning,AI,,skills
+2020049,NLP,AI,,skills
+2020049,OpenCV,AI,,skills
+2020049,TensorFlow,AI,,skills
+2020049,scikit-learn,AI,,skills
+2020049,Google Cloud Services,Cloud,,skills
+2020049,Microsoft Azure,Cloud,,skills
+2020049,Azure SQL Database,Database,,skills
+2020049,MySQL,Database,,skills
+2020049,Vector Databases,Database,,skills
+2020049,Python,Language,,skills
+2020049,Databricks,Platform,,skills
+2020058,Power BI,BI,,skills
+2020058,Tableau,BI,,skills
+2020058,MySQL,Database,,skills
+2020058,CSS,Language,,skills
+2020058,HTML,Language,,skills
+2020058,Python,Language,,skills
+2020058,SQL,Language,,skills
+2020058,Databricks,Platform,,skills
+2020058,Snowflake,Platform,,project
+2020058,Jupyter,Tool,,skills
+2020058,WordPress,Tool,,skills
+2020059,MicroStrategy,BI,,skills
+2020059,Power BI,BI,,skills
+2020059,Tableau,BI,,skills
+2020059,AWS,Cloud,,skills
+2020059,MySQL,Database,,skills
+2020059,HTML,Language,,skills
+2020059,PySpark,Language,,skills
+2020059,Python,Language,,skills
+2020059,SQL,Language,,skills
+2020059,Databricks,Platform,,skills
+2020059,Snowflake,Platform,,project
+2020059,Jupyter,Tool,,skills
+2020062,Computer Vision,AI,,skills
+2020062,Copilot Studio,AI,,skills
+2020062,Deep Learning,AI,,skills
+2020062,FAISS,AI,,skills
+2020062,Generative AI,AI,,skills
+2020062,Hugging Face,AI,,skills
+2020062,Keras,AI,,skills
+2020062,LlamaIndex,AI,,skills
+2020062,Machine Learning,AI,,skills
+2020062,NLP,AI,,skills
+2020062,OpenCV,AI,,skills
+2020062,TensorFlow,AI,,skills
+2020062,scikit-learn,AI,,skills
+2020062,Google Cloud Services,Cloud,,skills
+2020062,Microsoft Azure,Cloud,,skills
+2020062,Azure SQL Database,Database,,skills
+2020062,MySQL,Database,,skills
+2020062,Vector Databases,Database,,skills
+2020062,Python,Language,,skills
+2020062,Databricks,Platform,,skills
+2020063,Power BI,BI,,skills
+2020063,Tableau,BI,,skills
+2020063,Microsoft Azure,Cloud,,skills
+2020063,MySQL,Database,,skills
+2020063,Canva,Design,Basics,skills
+2020063,PySpark,Language,,skills
+2020063,Python,Language,,skills
+2020063,SQL,Language,,skills
+2020063,Databricks,Platform,,skills
+2020063,Microsoft Fabric,Platform,Basics,skills
+2020063,Azure Data Factory,Tool,,skills
+2020063,Jupyter,Tool,,skills
+2020066,Power BI,BI,,skills
+2020066,Microsoft Azure,Cloud,,skills
+2020066,MySQL,Database,,skills
+2020066,Adobe Illustrator,Design,,skills
+2020066,Adobe Photoshop,Design,,skills
+2020066,Adobe Premiere Pro,Design,,skills
+2020066,Canva,Design,,skills
+2020066,PySpark,Language,,skills
+2020066,Python,Language,,skills
+2020066,SQL,Language,,skills
+2020066,Databricks,Platform,,skills
+2020066,Microsoft Fabric,Platform,Basics,skills
+2020066,Snowflake,Platform,,skills
+2020066,Azure Data Factory,Tool,,skills
+2020066,Azure DevOps,Tool,,skills
+2020066,Jupyter,Tool,,skills
+2020066,MS Office,Tool,,skills
+2020075,Computer Vision,AI,,skills
+2020075,Copilot Studio,AI,,skills
+2020075,Deep Learning,AI,,skills
+2020075,FAISS,AI,,skills
+2020075,Generative AI,AI,,skills
+2020075,Hugging Face,AI,,skills
+2020075,Keras,AI,,skills
+2020075,LlamaIndex,AI,,skills
+2020075,Machine Learning,AI,,skills
+2020075,NLP,AI,,skills
+2020075,OpenCV,AI,,skills
+2020075,TensorFlow,AI,,skills
+2020075,scikit-learn,AI,,skills
+2020075,Google Cloud Services,Cloud,,skills
+2020075,Microsoft Azure,Cloud,,skills
+2020075,Azure SQL Database,Database,,skills
+2020075,MySQL,Database,,skills
+2020075,Vector Databases,Database,,skills
+2020075,Python,Language,,skills
+2020075,Databricks,Platform,,skills
+2020076,Computer Vision,AI,,skills
+2020076,Machine Learning,AI,,skills
+2020076,Web Scraping,AI,,skills
+2020076,MySQL,Database,,skills
+2020076,Python,Language,,skills
+2020076,SQL,Language,,skills
+2020076,Microsoft Fabric,Platform,,project
+2020077,Computer Vision,AI,,skills
+2020077,Copilot Studio,AI,,skills
+2020077,Deep Learning,AI,,skills
+2020077,FAISS,AI,,skills
+2020077,Generative AI,AI,,skills
+2020077,Hugging Face,AI,,skills
+2020077,Keras,AI,,skills
+2020077,LangChain,AI,,skills
+2020077,LlamaIndex,AI,,skills
+2020077,Machine Learning,AI,,skills
+2020077,NLP,AI,,skills
+2020077,OpenCV,AI,,skills
+2020077,Prompt Engineering,AI,,skills
+2020077,TensorFlow,AI,,skills
+2020077,Web Scraping,AI,,skills
+2020077,scikit-learn,AI,,skills
+2020077,Google Cloud Services,Cloud,,skills
+2020077,Microsoft Azure,Cloud,,skills
+2020077,Azure SQL Database,Database,,skills
+2020077,MySQL,Database,,skills
+2020077,Vector Databases,Database,,skills
+2020077,Python,Language,,skills
+2020077,SQL,Language,,skills
+2020077,Databricks,Platform,,skills
+2020079,Web Scraping,AI,,skills
+2020079,MySQL,Database,,skills
+2020079,HTML,Language,,skills
+2020079,Python,Language,,skills
+2020080,AWS,Cloud,,skills
+2020080,DigitalOcean,Cloud,,skills
+2020080,Microsoft Azure,Cloud,,skills
+2020080,MongoDB,Database,,skills
+2020080,PostgreSQL,Database,,skills
+2020080,Angular,Language,,skills
+2020080,Express.js,Language,,skills
+2020080,Flutter,Language,,skills
+2020080,JavaScript,Language,,skills
+2020080,Next.js,Language,,skills
+2020080,Node.js,Language,,skills
+2020080,Python,Language,,skills
+2020080,React,Language,,skills
+2020080,React Native,Language,,skills
+2020080,Spring Boot,Language,,skills
+2020080,Vue.js,Language,,skills
+2020080,Bitbucket,Tool,,skills
+2020080,Git,Tool,,skills
+2020083,Machine Learning,AI,,skills
+2020083,Power BI,BI,,skills
+2020083,Microsoft Azure,Cloud,,skills
+2020083,MongoDB,Database,,skills
+2020083,Bootstrap,Language,,skills
+2020083,CSS,Language,,skills
+2020083,HTML,Language,,skills
+2020083,JavaScript,Language,,skills
+2020083,Python,Language,,skills
+2020083,SQL,Language,,skills
+2020083,Front End Development,Other,,skills
+2020083,Databricks,Platform,,skills
+2020083,Salesforce,Platform,,skills
+2020083,Jupyter,Tool,,skills
+2020084,Power BI,BI,,skills
+2020084,AWS,Cloud,,skills
+2020084,Microsoft Azure,Cloud,,skills
+2020084,MongoDB,Database,,skills
+2020084,MySQL,Database,,skills
+2020084,Oracle,Database,,skills
+2020084,CSS,Language,,skills
+2020084,HTML,Language,,skills
+2020084,JavaScript,Language,,skills
+2020084,Python,Language,,skills
+2020084,SQL,Language,,skills
+2020084,Databricks,Platform,,skills
+2020084,Snowflake,Platform,,skills
+2020084,Git,Tool,,skills
+2020084,Jupyter,Tool,,skills
+2020085,Power BI,BI,,skills
+2020085,Microsoft Azure,Cloud,,skills
+2020085,Azure SQL Database,Database,,skills
+2020085,MongoDB,Database,,skills
+2020085,MySQL,Database,,skills
+2020085,CSS,Language,,skills
+2020085,HTML,Language,,skills
+2020085,PySpark,Language,,skills
+2020085,Python,Language,,skills
+2020085,SQL,Language,,skills
+2020085,Databricks,Platform,,skills
+2020085,Azure Data Factory,Tool,,skills
+2020085,Jupyter,Tool,,skills
+2020087,Power BI,BI,,skills
+2020087,Zoho Analytics,BI,,project
+2020087,MongoDB,Database,,skills
+2020087,MySQL,Database,,skills
+2020087,Canva,Design,,skills
+2020087,Figma,Design,,skills
+2020087,CSS,Language,,skills
+2020087,HTML,Language,,skills
+2020087,Java,Language,,skills
+2020087,JavaScript,Language,,skills
+2020087,Python,Language,,skills
+2020087,React,Language,,skills
+2020087,Spring Boot,Language,,skills
+2020087,Tailwind CSS,Language,,skills
+2020087,Databricks,Platform,,skills
+2020087,Bitbucket,Tool,,skills
+2020087,Git,Tool,,skills
+2020087,JotForm,Tool,,project
+2020087,Jupyter,Tool,,skills
+2020087,Zoho CRM,Tool,,project
+2020093,Power BI,BI,,skills
+2020093,Microsoft Azure,Cloud,,skills
+2020093,Azure SQL Database,Database,,skills
+2020093,MySQL,Database,,skills
+2020093,Canva,Design,Basics,skills
+2020093,Python,Language,,skills
+2020093,SQL,Language,,skills
+2020093,Databricks,Platform,,skills
+2020093,Microsoft Fabric,Platform,Basics,skills
+2020093,Jupyter,Tool,,skills
+2020103,Bash,Language,,skills
+2020103,Python,Language,,skills
+2020103,SQL,Language,,skills
+2020103,Linux,OS,,skills
+2020103,Windows,OS,,skills
+2020103,Burp Suite,Security,,skills
+2020103,Cryptography,Security,,skills
+2020103,Metasploit,Security,,skills
+2020103,Networking,Security,,skills
+2020103,Nikto,Security,,skills
+2020103,Nmap,Security,,skills
+2020103,OWASP ZAP,Security,,skills
+2020103,Wireshark,Security,,skills
+2020104,C++,Language,,skills
+2020104,Python,Language,,skills
+2020104,Linux,OS,,skills
+2020104,Windows,OS,,skills
+2020104,Risk Management,Other,,skills
+2020104,Burp Suite,Security,,skills
+2020104,Cryptography,Security,,skills
+2020104,FortiGate,Security,,skills
+2020104,Kali Linux,Security,,skills
+2020104,Metasploit,Security,,skills
+2020104,Nessus,Security,,skills
+2020104,Networking,Security,,skills
+2020104,OWASP Top 10,Security,,skills
+2020104,OWASP ZAP,Security,,skills
+2020104,Palo Alto,Security,configuration basics,skills
+2020104,Wireshark,Security,,skills
+2020104,VMware,Tool,,skills
+2020104,VirtualBox,Tool,,skills
+2020105,Bash,Language,,skills
+2020105,Python,Language,,skills
+2020105,SQL,Language,,skills
+2020105,Linux,OS,,skills
+2020105,Windows,OS,,skills
+2020105,Burp Suite,Security,,skills
+2020105,Cryptography,Security,,skills
+2020105,Metasploit,Security,,skills
+2020105,Networking,Security,,skills
+2020105,Nikto,Security,,skills
+2020105,Nmap,Security,,skills
+2020105,OWASP ZAP,Security,,skills
+2020105,Wireshark,Security,,skills
+2020105,sqlmap,Security,,skills
+2020106,Java,Language,,skills
+2020106,SQL,Language,,skills
+2020106,Linux,OS,,skills
+2020106,Windows,OS,,skills
+2020106,Burp Suite,Security,,skills
+2020106,Cryptography,Security,,skills
+2020106,Kali Linux,Security,,skills
+2020106,Networking,Security,,skills
+2020106,Nikto,Security,,skills
+2020106,Nmap,Security,,skills
+2020106,OWASP ZAP,Security,,skills
+2020106,Wireshark,Security,,skills
+2020106,sqlmap,Security,,skills
+2020106,Git,Tool,,skills
+2020107,Python,Language,,skills
+2020107,SQL,Language,,skills
+2020107,Linux,OS,,skills
+2020107,Windows,OS,,skills
+2020107,Burp Suite,Security,,skills
+2020107,Cryptography,Security,,skills
+2020107,Kali Linux,Security,,skills
+2020107,Networking,Security,,skills
+2020107,Nikto,Security,,skills
+2020107,Nmap,Security,,skills
+2020107,OWASP ZAP,Security,,skills
+2020107,Wireshark,Security,,skills
+2020107,sqlmap,Security,,skills
+2020107,Git,Tool,,skills
+2020115,Power BI,BI,,skills
+2020115,Microsoft Azure,Cloud,,skills
+2020115,Azure SQL Database,Database,,skills
+2020115,MySQL,Database,,skills
+2020115,Canva,Design,Basics,skills
+2020115,PySpark,Language,basics,skills
+2020115,Python,Language,,skills
+2020115,SQL,Language,,skills
+2020115,Databricks,Platform,,skills
+2020115,Microsoft Fabric,Platform,Basics,skills
+2020115,Jupyter,Tool,,skills
+2020116,Power BI,BI,,skills
+2020116,Microsoft Azure,Cloud,,skills
+2020116,Azure SQL Database,Database,,skills
+2020116,MySQL,Database,,skills
+2020116,Canva,Design,Basics,skills
+2020116,PySpark,Language,basics,skills
+2020116,Python,Language,,skills
+2020116,SQL,Language,,skills
+2020116,Databricks,Platform,,skills
+2020116,Microsoft Fabric,Platform,Basics,skills
+2020116,Jupyter,Tool,,skills
+2020117,Power BI,BI,,skills
+2020117,Microsoft Azure,Cloud,,skills
+2020117,Azure SQL Database,Database,,skills
+2020117,MySQL,Database,,skills
+2020117,SQL Server,Database,,skills
+2020117,Canva,Design,,skills
+2020117,HTML,Language,,skills
+2020117,Python,Language,,skills
+2020117,SQL,Language,,skills
+2020117,Databricks,Platform,,skills
+2020117,Microsoft Fabric,Platform,,skills
+2020118,Power BI,BI,,skills
+2020118,Microsoft Azure,Cloud,,skills
+2020118,Azure SQL Database,Database,,skills
+2020118,MySQL,Database,,skills
+2020118,Canva,Design,,skills
+2020118,Python,Language,,skills
+2020118,SQL,Language,,skills
+2020118,Databricks,Platform,,skills
+2020118,Azure DevOps,Tool,,project
+2020119,Power BI,BI,,skills
+2020119,Microsoft Azure,Cloud,,skills
+2020119,Azure SQL Database,Database,,skills
+2020119,MySQL,Database,,skills
+2020119,SQL Server,Database,,skills
+2020119,Python,Language,,skills
+2020119,SQL,Language,,skills
+2020119,Databricks,Platform,,skills
+2020120,Power BI,BI,,skills
+2020120,Microsoft Azure,Cloud,,skills
+2020120,Azure SQL Database,Database,,skills
+2020120,MySQL,Database,,skills
+2020120,Canva,Design,,skills
+2020120,Python,Language,,skills
+2020120,SQL,Language,,skills
+2020120,Databricks,Platform,,skills
+2020127,Power BI,BI,,skills
+2020127,Microsoft Azure,Cloud,,skills
+2020127,Azure SQL Database,Database,,skills
+2020127,MySQL,Database,,skills
+2020127,Canva,Design,Basics,skills
+2020127,PySpark,Language,basics,skills
+2020127,Python,Language,,skills
+2020127,SQL,Language,,skills
+2020127,Databricks,Platform,,skills
+2020127,Microsoft Fabric,Platform,Basics,skills
+2020127,Jupyter,Tool,,skills
