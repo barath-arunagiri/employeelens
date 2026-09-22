@@ -97,6 +97,32 @@ class AgentResult:
     proposals: list[dict] = field(default_factory=list)
 
 
+def _extract_content_text(content) -> str:
+    """
+    Extract plain text from an OpenAI message ``content`` field.
+
+    The Databricks Foundation Model ``databricks-gpt-oss-120b`` is a
+    reasoning model that returns ``content`` as a list of content blocks
+    (e.g. ``[{"type": "reasoning", ...}, {"type": "text", "text": "..."}]``)
+    rather than a plain string.  This helper normalises both the classic
+    string format and the structured-blocks format so the rest of the
+    agent can always treat the answer as ``str``.
+    """
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "text":
+                parts.append(block.get("text", ""))
+            elif isinstance(block, str):
+                parts.append(block)
+        return "\n".join(parts)
+    return str(content)
+
+
 def _openai_tools(tools: list[dict] = TOOLS) -> list[dict]:
     """
     Convert the shared tool schema into OpenAI function format.
@@ -223,7 +249,7 @@ class PeopleLensAgent:
 
             if not message.tool_calls:
                 return AgentResult(
-                    (message.content or "").strip(),
+                    _extract_content_text(message.content).strip(),
                     trace,
                     round_no,
                     f"Databricks · {self.model}",
@@ -411,7 +437,7 @@ class PeopleLensAgent:
 
             if not message.tool_calls:
                 return AgentResult(
-                    (message.content or "").strip(),
+                    _extract_content_text(message.content).strip(),
                     trace,
                     round_no,
                     f"Databricks · {self.model}",
@@ -424,7 +450,7 @@ class PeopleLensAgent:
             messages.append(
                 {
                     "role": "assistant",
-                    "content": message.content or "",
+                    "content": _extract_content_text(message.content),
                     "tool_calls": [
                         {
                             "id": call.id,
