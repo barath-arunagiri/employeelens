@@ -161,6 +161,24 @@ class PeopleLensAgent:
 
         self.client = DatabricksOpenAI(max_retries=0)
 
+    def _chat_with_retry(self, **kwargs):
+        """
+        Call the model with one retry on rate-limit (HTTP 429).
+
+        The Databricks SDK has max_retries=0 so it never retries
+        automatically.  We add a single app-level retry with a short
+        backoff so transient rate-limit spikes don't immediately surface
+        to the user.
+        """
+        try:
+            return self.client.chat.completions.create(**kwargs)
+        except Exception as exc:
+            if not self._is_rate_limit_error(exc):
+                raise
+            import time
+            time.sleep(2)
+            return self.client.chat.completions.create(**kwargs)
+
     def ask(
         self,
         question: str,
@@ -216,7 +234,7 @@ class PeopleLensAgent:
             MAX_TOOL_ROUNDS + 1,
         ):
             try:
-                response = self.client.chat.completions.create(
+                response = self._chat_with_retry(
                     model=self.model,
                     max_tokens=800,
                     tools=_openai_tools(management_tools),
@@ -398,7 +416,7 @@ class PeopleLensAgent:
         ):
 
             try:
-                response = self.client.chat.completions.create(
+                response = self._chat_with_retry(
                     model=self.model,
                     max_tokens=1500,
                     tools=_openai_tools(),
