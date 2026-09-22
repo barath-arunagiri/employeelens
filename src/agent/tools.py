@@ -708,6 +708,7 @@ MANAGEMENT_DISPATCH = {
         a.get("client", ""),
         a.get("technologies", ""),
         a.get("role", ""),
+        a.get("project_type", "main"),
     ),
 
     "propose_remove_project": lambda a: repo.propose_remove_project(
