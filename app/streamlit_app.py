@@ -233,7 +233,17 @@ with management_tab:
         proposals = st.session_state.get("management_proposals", [])
         if proposals:
             st.markdown("**Proposed changes**")
-            for proposal in proposals:
+            # Show project_type as a selectable dropdown for project proposals
+            for i, proposal in enumerate(proposals):
+                if proposal.get("table") == "employee_projects" and "project_type" in proposal:
+                    current_type = proposal.get("project_type", "main")
+                    selected_type = st.selectbox(
+                        f"Project type — {proposal.get('project', 'project')}",
+                        options=["main", "support"],
+                        index=0 if current_type == "main" else 1,
+                        key=f"project_type_select_{i}",
+                    )
+                    proposal["project_type"] = selected_type
                 st.json(proposal, expanded=True)
             action = "Confirm Changes" if len(proposals) > 1 else (
                 "Confirm Delete" if proposals[0]["operation"] == "DELETE" else "Confirm Update"
@@ -272,9 +282,12 @@ with profile_tab:
         st.markdown(f"### {profile['name']}")
         position = profile.get("position") or ""
         designation = profile.get("designation") or ""
-        role_parts = ([position, designation] if position.lower() == "senior"
-                  else [position or designation])
-        role = " - ".join(part for part in role_parts if part)
+        if position and "senior" in position.lower():
+            role = f"{position} - {designation}" if designation else position
+        elif position:
+            role = position
+        else:
+            role = designation
         details = st.columns([3, 1, 2, 2])
         details[0].markdown(f"**Email**  \n{profile['email'] or '—'}")
         details[1].markdown(f"**ID**  \n{profile['employee_id']}")
