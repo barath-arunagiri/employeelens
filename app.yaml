@@ -1,0 +1,7 @@
+command:
+- streamlit
+- run
+- app/streamlit_app.py
+env:
+- name: STREAMLIT_GATHER_USAGE_STATS
+  value: 'false'

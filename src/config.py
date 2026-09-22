@@ -28,9 +28,11 @@ if not OCCUPATIONALS_XLSX.exists():
 
 VALID_EMAIL_DOMAIN = "@datapattern.ai"
 
-# Groq is the only supported model provider for the app.
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
-GROQ_MODEL = os.environ.get("GROQ_MODEL", "openai/gpt-oss-120b")
+# Databricks Foundation Model API (free pay-per-token).
+# In Databricks Apps, authentication is automatic — no API key needed.
+# Available endpoints: databricks-gpt-oss-120b, databricks-gpt-oss-20b,
+# databricks-llama-4-maverick, databricks-qwen3-next-80b-a3b-instruct, etc.
+DATABRICKS_MODEL = os.environ.get("DATABRICKS_MODEL", "databricks-gpt-oss-120b")
 DATA_MANAGEMENT_ENABLED = os.environ.get("DATA_MANAGEMENT_ENABLED", "true").lower() == "true"
 DATA_MANAGEMENT_PIN = os.environ.get("DATA_MANAGEMENT_PIN", "")
 

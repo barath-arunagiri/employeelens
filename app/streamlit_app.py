@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from src.config import (APP_NAME, DATA_MANAGEMENT_ENABLED, DATA_MANAGEMENT_PIN, DB_PATH,
-                        GROQ_API_KEY, GROQ_MODEL, REPORTS_DIR)  # noqa: E402
+                        DATABRICKS_MODEL, REPORTS_DIR)  # noqa: E402
 from src.database import repository as repo                                       # noqa: E402
 
 st.set_page_config(page_title=APP_NAME, page_icon="🔎", layout="wide")
@@ -36,20 +36,21 @@ SUGGESTIONS = [
     "Which skills does only one person have?",
 ]
 
-HAS_KEY = bool(GROQ_API_KEY)
-BACKEND_LABEL = f"Groq · {GROQ_MODEL}" if GROQ_API_KEY else "none"
+HAS_MODEL = True
+BACKEND_LABEL = f"Databricks · {DATABRICKS_MODEL}"
 
 
 # ------------------------------------------------------------------ setup
 
 def fatal(message: str) -> None:
     st.error(message)
-    st.code("python -m src.ingestion.normalize\npython -m src.ingestion.load_duckdb", language="bash")
     st.stop()
 
 
+# Build the DuckDB database from clean CSVs on first launch.
 if not DB_PATH.exists():
-    fatal(f"No database found at {DB_PATH}. Build it first:")
+    from src.ingestion.load_duckdb import main as _build_db
+    _build_db()
 
 try:
     repo.ensure_management_schema()
@@ -88,9 +89,6 @@ with st.sidebar:
 
     st.divider()
     st.caption(f"Model: `{BACKEND_LABEL}`")
-    if not HAS_KEY:
-        st.warning("No Groq API key set — the Ask tab is disabled. Add GROQ_API_KEY "
-               "to .env. Profile and Explore work without it.")
 
     suspect_path = REPORTS_DIR / "suspect_certifications.csv"
     if suspect_path.exists():
@@ -143,7 +141,7 @@ with ask_tab:
                         st.json(step["input"], expanded=False)
 
     # a question can arrive from the chat box or from a suggestion button
-    prompt = st.chat_input("Ask anything about the team…", disabled=not HAS_KEY)
+    prompt = st.chat_input("Ask anything about the team…")
     prompt = prompt or st.session_state.pop("pending", None)
 
     if prompt:
@@ -206,8 +204,6 @@ with management_tab:
             st.session_state.management_trace = []
             if not request.strip():
                 st.warning("Describe a change first.")
-            elif not HAS_KEY:
-                st.error("A Groq API key is required to process a natural-language change.")
             else:
                 with st.spinner("Preparing a proposed change..."):
                     try:

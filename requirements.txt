@@ -3,4 +3,5 @@ openpyxl>=3.1
 duckdb>=1.1
 streamlit>=1.40
 python-dotenv>=1.0
-openai>=1.40           # used to talk to Groq
+databricks-openai>=0.1.0   # OpenAI-compatible client for Databricks Foundation Model APIs
+databricks-sdk>=0.30.0
