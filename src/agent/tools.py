@@ -523,6 +523,11 @@ MANAGEMENT_TOOLS = [
                 "client": {"type": "string"},
                 "technologies": {"type": "string"},
                 "role": {"type": "string"},
+                "project_type": {
+                    "type": "string",
+                    "description": "Project involvement type: 'main' or 'support'. Default is 'main'.",
+                    "enum": ["main", "support"],
+                },
             },
             "required": [
                 "employee_id",
