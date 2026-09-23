@@ -32,7 +32,18 @@ VALID_EMAIL_DOMAIN = "@datapattern.ai"
 # In Databricks Apps, authentication is automatic — no API key needed.
 # Available endpoints: databricks-gpt-oss-120b, databricks-gpt-oss-20b,
 # databricks-llama-4-maverick, databricks-qwen3-next-80b-a3b-instruct, etc.
-DATABRICKS_MODEL = os.environ.get("DATABRICKS_MODEL", "databricks-llama-4-maverick")
+
+# Multi-model fallback: if one model hits rate limit, automatically try the next.
+# This prevents the agent from failing when a single model is rate-limited.
+DATABRICKS_MODELS = [
+    "databricks-llama-4-maverick",           # Primary: fast, good quality
+    "databricks-meta-llama-3-1-70b-instruct",  # Fallback 1
+    "databricks-dbrx-instruct",              # Fallback 2
+    "databricks-meta-llama-3-1-405b-instruct", # Fallback 3: most capable
+]
+
+# Legacy single-model config (for backward compatibility)
+DATABRICKS_MODEL = os.environ.get("DATABRICKS_MODEL", DATABRICKS_MODELS[0])
 DATA_MANAGEMENT_ENABLED = os.environ.get("DATA_MANAGEMENT_ENABLED", "true").lower() == "true"
 DATA_MANAGEMENT_PIN = os.environ.get("DATA_MANAGEMENT_PIN", "")
 

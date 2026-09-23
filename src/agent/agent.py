@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 
 from src.config import (
     DATABRICKS_MODEL,
+    DATABRICKS_MODELS,
     MAX_TOOL_ROUNDS,
 )
 from src.agent.tools import (
@@ -144,6 +145,8 @@ class PeopleLensAgent:
     def __init__(self) -> None:
         self.backend = "databricks"
         self.model = DATABRICKS_MODEL
+        self.models = DATABRICKS_MODELS  # Multi-model fallback list
+        self.last_successful_model = None  # Track which model worked last
 
         if not self.model:
             raise RuntimeError(
@@ -163,21 +166,61 @@ class PeopleLensAgent:
 
     def _chat_with_retry(self, **kwargs):
         """
-        Call the model with one retry on rate-limit (HTTP 429).
+        Call models with automatic fallback on rate-limit (HTTP 429).
 
-        The Databricks SDK has max_retries=0 so it never retries
-        automatically.  We add a single app-level retry with a short
-        backoff so transient rate-limit spikes don't immediately surface
-        to the user.
+        Tries each model in DATABRICKS_MODELS list in sequence.
+        If one model hits rate limit, immediately switches to the next.
+        This prevents agent failures when a single model is rate-limited.
         """
-        try:
-            return self.client.chat.completions.create(**kwargs)
-        except Exception as exc:
-            if not self._is_rate_limit_error(exc):
-                raise
-            import time
-            time.sleep(2)
-            return self.client.chat.completions.create(**kwargs)
+        import time
+        
+        # Extract model from kwargs or use default
+        requested_model = kwargs.get("model", self.model)
+        
+        # Build fallback sequence: start with requested model, then try others
+        fallback_sequence = [requested_model]
+        for model in self.models:
+            if model != requested_model:
+                fallback_sequence.append(model)
+        
+        last_error = None
+        
+        for attempt_no, model_to_try in enumerate(fallback_sequence, 1):
+            try:
+                # Update model in kwargs
+                kwargs["model"] = model_to_try
+                
+                response = self.client.chat.completions.create(**kwargs)
+                
+                # Success! Track this model for logging
+                self.last_successful_model = model_to_try
+                
+                return response
+                
+            except Exception as exc:
+                last_error = exc
+                
+                # If it's a rate limit error and we have more models to try, continue
+                if self._is_rate_limit_error(exc) and attempt_no < len(fallback_sequence):
+                    time.sleep(0.5)  # Brief pause before trying next model
+                    continue
+                
+                # If not a rate limit error, or no more models to try, raise
+                if not self._is_rate_limit_error(exc) or attempt_no >= len(fallback_sequence):
+                    raise
+        
+        # All models failed with rate limits
+        if last_error:
+            raise last_error
+
+    def _get_model_display(self) -> str:
+        """
+        Get the display name for the model actually used.
+        
+        Returns the last successful model if available (showing which
+        fallback model was used), otherwise the default model.
+        """
+        return self.last_successful_model or self.model
 
     def ask(
         self,
@@ -248,19 +291,19 @@ class PeopleLensAgent:
                 if self._is_rate_limit_error(exc):
                     return AgentResult(
                         answer=(
-                            "Databricks rate limit reached. "
+                            "All models reached rate limit (tried 4 fallback models). "
                             "Please wait a moment and try again."
                         ),
                         trace=trace,
                         rounds=round_no,
-                        backend=f"Databricks · {self.model}",
+                        backend=f"Databricks · {self._get_model_display()}",
                     )
 
                 return AgentResult(
                     answer=f"Databricks request failed: {exc}",
                     trace=trace,
                     rounds=round_no,
-                    backend=f"Databricks · {self.model}",
+                    backend=f"Databricks · {self._get_model_display()}",
                 )
 
             message = response.choices[0].message
@@ -432,19 +475,19 @@ class PeopleLensAgent:
                 if self._is_rate_limit_error(exc):
                     return AgentResult(
                         answer=(
-                            "Databricks rate limit reached. "
+                            "All models reached rate limit (tried 4 fallback models). "
                             "Please wait a moment and try again."
                         ),
                         trace=trace,
                         rounds=round_no,
-                        backend=f"Databricks · {self.model}",
+                        backend=f"Databricks · {self._get_model_display()}",
                     )
 
                 return AgentResult(
                     answer=f"Databricks request failed: {exc}",
                     trace=trace,
                     rounds=round_no,
-                    backend=f"Databricks · {self.model}",
+                    backend=f"Databricks · {self._get_model_display()}",
                 )
 
             message = response.choices[0].message

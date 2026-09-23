@@ -10,7 +10,7 @@ employee_id,name,email,position,designation,team
 2020027,Sneha Singh,snehas@datapattern.ai,,Data Engineer,Data Team
 2020029,Gladson Moses,gladson.moses@datapattern.ai,Team Lead,IT Recruiter,Resourcing Team
 2020037,Arun Sridhar,arunsridhar@datapattern.ai,Team Lead,Cyber Security Analyst,Cyber Team
-2020038,Veerakumar,veerakumar@datapattern.ai,,Data Engineer,Data Team
+2020038,Veerakumar,veerakumar@datapattern.ai,Senior,Data Engineer,Data Team
 2020043,Praveen Kumar R,praveenr@datapattern.ai,Team Lead,Lead Acceleration,Sales Team
 2020047,Sam Yakin V,samy@datapattern.ai,,Presales Executive,Presales Team
 2020049,Srinidhi S,srinidhi@datapattern.ai,Team Lead,Gen AI Developer,Gen AI Team
@@ -19,7 +19,7 @@ employee_id,name,email,position,designation,team
 2020059,Sivaprathish S,sivap@datapattern.ai,,Data Engineer,Data Team
 2020062,Adheeshwaran J,adheeshwaranj@datapattern.ai,Module Lead,Gen AI Developer,Gen AI Team
 2020063,Sivakumar V,sivakumarv@datapattern.ai,,Data Engineer,Data Team
-2020066,Praveen Kumar M,praveenkumarm@datapattern.ai,,Data Engineer,Data Team
+2020066,Praveen Kumar M,praveenkumarm@datapattern.ai,Senior,Data Engineer,Data Team
 2020075,Shankari G,shankarig@datapattern.ai,Module Lead,Gen AI Developer,Gen AI Team
 2020076,Abirami M,abiramim@datapattern.ai,,Data Engineer,Data Team
 2020077,Geo J,geoj@datapattern.ai,Module Lead,Gen AI Developer,Gen AI Team
@@ -28,7 +28,7 @@ employee_id,name,email,position,designation,team
 2020083,Harish Raghav Prasad R,harishr@datapattern.ai,Module Lead,Data Engineer,Data Team
 2020084,Praveen Kumar D,dharmalingampk@datapattern.ai,,Data Engineer,Data Team
 2020085,Akash K,akashk@datapattern.ai,,Data Engineer,Data Team
-2020087,Gowtham K,gowthamk@datapattern.ai,,Data Engineer,Data Team
+2020087,Gowtham K,gowthamk@datapattern.ai,Senior,Data Engineer,Data Team
 2020091,Ganesan V,ganesanv@datapattern.ai,,IT Recruiter - US,Resourcing Team
 2020093,Dazio,dazio@datapattern.ai,,Data Engineer,Data Team
 2020095,Vigneshwar T,vigneshwart@datapattern.ai,,Business Development Executive,Sales Team
