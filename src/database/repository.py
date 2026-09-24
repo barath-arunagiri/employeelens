@@ -1026,16 +1026,19 @@ def dataset_stats() -> dict:
 # --------------------------------------------------------------- free SQL
 
 SCHEMA_DESCRIPTION = """
-employees(employee_id, name, email)
+employees(employee_id, name, email, position, team, department, designation, location, employment_status, joining_date)
 employee_managers(employee_id, reporting_id)        -- reporting_id is the direct reporting lead
-employee_projects(employee_id, project, client, technologies)
+employee_projects(employee_id, project, client, technologies, project_type)   -- project_type is 'main' or 'support'
 employee_skills(employee_id, skill, category, qualifier, source)
 employee_certifications(employee_id, certification, vendor, source, verified, raw_text)
 
 Notes:
 - skill categories: Language, Database, Cloud, BI, AI, Platform, Tool, Security, Design, OS, Other
 - one row per person per skill / project / certification, so count DISTINCT employee_id for people
-- position and designation may be available for some employees; department, joining date, location and salary are not reliable dataset fields
+- position values: Team Lead, Module Lead, Project Manager, Operational Manager, Intern
+- designation values: Data Engineer, Gen AI Developer, Cyber Security Analyst, Business Development Executive, IT Recruiter, etc.
+- team values: Data Team, Gen AI Team, Cyber Team, Sales Team, Resourcing Team, HR Team, Presales Team
+- department, joining_date, location, employment_status may be NULL for most employees; do not rely on them
 """
 
 _FORBIDDEN = ("insert", "update", "delete", "drop", "create", "alter", "attach",

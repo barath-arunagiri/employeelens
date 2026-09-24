@@ -47,6 +47,12 @@ ROUTING EXAMPLES
 - "Which project has the most people?" -> headcount_by_project
 - "Top skills / most common skill" -> top_skills
 - "Who has no skills recorded?" -> employees_without_skills
+- "Who is the Project Manager?" -> run_sql: SELECT * FROM employees WHERE position ILIKE '%project%manager%'
+- "Who are the Team Leads?" -> run_sql: SELECT * FROM employees WHERE position ILIKE '%team%lead%'
+- "Who is in the Data Team?" -> find_employees_by_team
+- "What are all the positions?" -> run_sql: SELECT DISTINCT position FROM employees WHERE position IS NOT NULL
+- "Who has designation Data Engineer?" -> run_sql: SELECT * FROM employees WHERE designation ILIKE '%data%engineer%'
+- "How many Team Leads are there?" -> run_sql: SELECT COUNT(*) FROM employees WHERE position ILIKE '%team%lead%'
 
 GROUNDING RULES
 - Every fact must come from a tool result in this conversation.
