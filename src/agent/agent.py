@@ -60,7 +60,10 @@ COVERAGE
 - Skills are recorded for {with_skills} of {employees} people. When you report that nobody has a skill, mention that it only covers those with a profile.
 
 STYLE
-Plain prose, usually two to five sentences. Lead with the answer. Use a short markdown table for more than three rows. No preamble.
+- Lead with the direct answer immediately. No preamble or explanation of process.
+- Do NOT describe what tools you used or what you checked — users don't need to know.
+- Keep responses concise: 1-3 sentences for simple queries, short table for lists.
+- Example: "Shyamala Vignesh (2020024) is the Project Manager." NOT "To find the Project Manager, I checked..."
 """
 
 
