@@ -140,9 +140,47 @@ with ask_tab:
                         st.markdown(f"**`{step['tool']}`** → {step['row_count']} row(s)")
                         st.json(step["input"], expanded=False)
 
-    # a question can arrive from the chat box or from a suggestion button
-    prompt = st.chat_input("Ask anything about the team…")
-    prompt = prompt or st.session_state.pop("pending", None)
+    # Toggle between quick chat and detailed multiline mode
+    if "input_mode" not in st.session_state:
+        st.session_state.input_mode = "quick"  # default to quick mode
+
+    # Mode toggle in sidebar or inline
+    input_col1, input_col2 = st.columns([6, 1])
+    with input_col2:
+        if st.session_state.input_mode == "quick":
+            if st.button("📝 Detailed", help="Switch to multiline input mode", use_container_width=True):
+                st.session_state.input_mode = "detailed"
+                st.rerun()
+        else:
+            if st.button("💬 Quick", help="Switch to quick chat mode", use_container_width=True):
+                st.session_state.input_mode = "quick"
+                st.rerun()
+
+    prompt = None
+
+    # Quick mode: single-line chat input (fast, enter to send)
+    if st.session_state.input_mode == "quick":
+        prompt = st.chat_input("Ask anything about the team…")
+        prompt = prompt or st.session_state.pop("pending", None)
+
+    # Detailed mode: multiline text area (for complex queries)
+    else:
+        with input_col1:
+            detailed_query = st.text_area(
+                "Detailed query (multiline supported)",
+                placeholder="I need to find employees who:\n1. Have Python and Azure skills\n2. Work on active projects\n3. Have Databricks certifications\n\nAnd show me their project history.",
+                height=150,
+                key="detailed_query_input",
+                label_visibility="collapsed"
+            )
+            if st.button("🚀 Send", type="primary", key="send_detailed"):
+                if detailed_query.strip():
+                    prompt = detailed_query
+                else:
+                    st.warning("Please enter a query first.")
+        
+        # Suggestion buttons still work in detailed mode
+        prompt = prompt or st.session_state.pop("pending", None)
 
     if prompt:
         st.session_state.messages.append({"role": "user", "content": prompt})
