@@ -259,11 +259,21 @@ class PeopleLensAgent:
                 "role": "system",
                 "content": (
                     "You are the Employeelens HR data management assistant. "
-                    "For a change request, use exactly one proposal tool. "
-                    "Proposal tools never write to DuckDB. "
-                    "For history questions, use get_audit_history and answer "
-                    "from its rows without confirmation. "
-                    "Never invent employee IDs, records, or values."
+                    "\n\nNAME RESOLUTION:\n"
+                    "- When given employee NAMES (not IDs), ALWAYS call search_employees FIRST to get their employee_id. "
+                    "- If search_employees returns multiple matches for a name, list them and ask user to clarify. "
+                    "- If no matches found, say so clearly - do not proceed with placeholder IDs. "
+                    "- For batch requests (multiple people), search for each person individually. "
+                    "\n\nPROPOSAL RULES:\n"
+                    "- For a change request, use exactly one proposal tool PER EMPLOYEE. "
+                    "- For batch requests (e.g., 'add cert to Barath, Nisha, Sanjai'), create MULTIPLE proposals. "
+                    "- Proposal tools never write to DuckDB - they only create proposals. "
+                    "\n\nHISTORY QUERIES:\n"
+                    "- For history questions, use get_audit_history and answer from its rows without confirmation. "
+                    "\n\nSTRICT RULES:\n"
+                    "- Never invent employee IDs, records, or values. "
+                    "- Always validate employee_id exists before creating proposal. "
+                    "- If name resolution fails, explain why and ask for clarification."
                 ),
             },
             {
@@ -279,7 +289,7 @@ class PeopleLensAgent:
             + [
                 tool
                 for tool in TOOLS
-                if tool["name"] == "get_audit_history"
+                if tool["name"] in ["get_audit_history", "search_employees", "get_employee_360"]
             ]
         )
 
@@ -327,6 +337,25 @@ class PeopleLensAgent:
                     f"Databricks · {self.model}",
                 )
 
+            # Preserve assistant tool-call message for multi-round conversations
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": _extract_content_text(message.content),
+                    "tool_calls": [
+                        {
+                            "id": call.id,
+                            "type": "function",
+                            "function": {
+                                "name": call.function.name,
+                                "arguments": call.function.arguments,
+                            },
+                        }
+                        for call in message.tool_calls
+                    ],
+                }
+            )
+
             proposals = []
 
             for call in message.tool_calls:
@@ -338,7 +367,8 @@ class PeopleLensAgent:
                 except json.JSONDecodeError:
                     args = {}
 
-                if call.function.name == "get_audit_history":
+                # Route read-only tools (search, audit) vs management proposal tools
+                if call.function.name in ["get_audit_history", "search_employees", "get_employee_360"]:
                     output = run_tool(
                         call.function.name,
                         args,
@@ -358,6 +388,19 @@ class PeopleLensAgent:
                     }
                 )
 
+                # Append tool result to messages so agent can use it in next round
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": call.id,
+                        "name": call.function.name,
+                        "content": json.dumps(
+                            output,
+                            default=str,
+                        )[:16000],
+                    }
+                )
+
                 if "error" in output:
                     return AgentResult(
                         output["error"],
@@ -366,7 +409,8 @@ class PeopleLensAgent:
                         f"Databricks · {self.model}",
                     )
 
-                if call.function.name != "get_audit_history":
+                # Only management tools generate proposals, not read-only tools
+                if call.function.name not in ["get_audit_history", "search_employees", "get_employee_360"]:
                     proposals.extend(
                         output.get("rows", [])
                     )
@@ -385,12 +429,8 @@ class PeopleLensAgent:
                     proposals,
                 )
 
-            return AgentResult(
-                "Audit history retrieved.",
-                trace,
-                round_no,
-                f"Databricks · {self.model}",
-            )
+            # No proposals yet - continue loop if agent only called read-only tools
+            # (search_employees, get_audit_history, etc.) to gather information
 
         return AgentResult(
             "I could not create a management proposal.",
