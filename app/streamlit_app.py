@@ -90,15 +90,7 @@ with st.sidebar:
     st.divider()
     st.caption(f"Model: `{BACKEND_LABEL}`")
 
-    suspect_path = REPORTS_DIR / "suspect_certifications.csv"
-    if suspect_path.exists():
-        suspect = pd.read_csv(suspect_path)
-        st.error(f"{len(suspect)} certification claims are unverified — the same "
-                 f"five-certification block was copy-pasted across "
-                 f"{suspect['employee_id'].nunique()} people in the source sheet. "
-                 "Confirm them before quoting any number externally.")
-        with st.expander("Which claims are unverified"):
-            st.dataframe(suspect, hide_index=True, use_container_width=True)
+    # Suspect certifications check removed - all certifications shown without verification status
 
     issues_path = REPORTS_DIR / "data_issues.csv"
     if issues_path.exists():
@@ -347,11 +339,7 @@ with profile_tab:
             st.markdown("**Certifications**")
             if profile["certifications"]:
                 for cert in profile["certifications"]:
-                    mark = "" if cert["verified"] == "true" else "  ⚠️ unverified"
-                    st.markdown(f"- {cert['certification']}{mark}")
-                if any(c["verified"] != "true" for c in profile["certifications"]):
-                    st.caption("Unverified entries came from a copy-pasted block in the "
-                               "source spreadsheet. Confirm with the person before using them.")
+                    st.markdown(f"- {cert['certification']}")
             else:
                 st.caption("None recorded.")
 

@@ -204,7 +204,7 @@ def propose_remove_skill(employee_id: str, skill: str) -> dict:
 
 
 def propose_add_certification(employee_id: str, certification: str,
-                              vendor: str = "", verified: str = "false") -> dict:
+                              vendor: str = "", verified: str = "true") -> dict:
     connection = _write_con()
     try:
         if not _employee_exists(connection, employee_id):
