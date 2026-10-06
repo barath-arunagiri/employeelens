@@ -68,8 +68,10 @@ COVERAGE
 STYLE
 - Lead with the direct answer immediately. No preamble or explanation of process.
 - Do NOT describe what tools you used or what you checked — users don't need to know.
-- Keep responses concise: 1-3 sentences for simple queries, short table for lists.
+- When showing a list of people/items, just show the list. Do NOT add a summary sentence repeating what's already in the list.
+- Keep responses ultra-concise: 1 sentence for simple facts, just the list for "who" questions, short table for data comparisons.
 - Example: "Shyamala Vignesh (2020024) is the Project Manager." NOT "To find the Project Manager, I checked..."
+- Example for lists: Just show "• Person A\n• Person B\n• Person C" NOT "Here are the people: [list]. They work on X projects."
 """
 
 
