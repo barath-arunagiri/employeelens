@@ -82,7 +82,7 @@ def _fix_sql_dialect(sql: str) -> str:
     """Convert DuckDB SQL syntax to Databricks SQL."""
     # string_agg(col, ', ') -> concat_ws(',', collect_set(col))
     sql = re.sub(
-        r'string_agg\(DISTINCT\s+(.+?),\s*\'([^']*)\'\)',
+        r"string_agg\(DISTINCT\s+(.+?),\s*'([^']*)'\)",
         r"concat_ws('\2', collect_set(\1))",
         sql
     )
