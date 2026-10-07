@@ -32,7 +32,7 @@ DATAPATTERN_COLORS = {
     "background": "#ffffff",   # White
 }
 
-# Custom CSS for DataPattern branding
+# Custom CSS for DataPattern branding - ALL TEXT ELEMENTS
 st.markdown("""
 <style>
     /* DataPattern color scheme */
@@ -45,45 +45,133 @@ st.markdown("""
         background-color: #f8f9fa;
     }
     
-    /* Primary buttons with DataPattern orange */
-    .stButton>button[kind="primary"] {
-        background-color: #f46902;
-        color: white;
-        border: none;
-    }
-    .stButton>button[kind="primary"]:hover {
-        background-color: #f18a31;
-        border: none;
+    /* ALL HEADERS - DataPattern blue */
+    h1, h2, h3, h4, h5, h6 {
+        color: #033c67 !important;
     }
     
-    /* Headers with DataPattern blue */
-    h1, h2, h3 {
+    /* ALL BODY TEXT - DataPattern blue */
+    p, span, div, label, li {
+        color: #033c67;
+    }
+    
+    /* Markdown text */
+    .stMarkdown {
+        color: #033c67;
+    }
+    
+    /* Captions and small text */
+    .stCaption, small {
+        color: #033c67;
+    }
+    
+    /* Input labels and form labels */
+    [data-testid="stWidgetLabel"] {
+        color: #033c67 !important;
+    }
+    
+    /* Text input, text area */
+    input, textarea {
+        color: #033c67 !important;
+    }
+    
+    /* Selectbox, radio, checkbox labels */
+    .stSelectbox label, .stRadio label, .stCheckbox label {
+        color: #033c67 !important;
+    }
+    
+    /* Dataframe/table text */
+    .stDataFrame, .stTable {
         color: #033c67;
     }
     
     /* Metrics styling */
     [data-testid="stMetricValue"] {
-        color: #033c67;
+        color: #033c67 !important;
         font-weight: 600;
+    }
+    [data-testid="stMetricLabel"] {
+        color: #033c67 !important;
+    }
+    [data-testid="stMetricDelta"] {
+        color: #033c67 !important;
+    }
+    
+    /* Expander headers */
+    .streamlit-expanderHeader {
+        color: #033c67 !important;
+    }
+    
+    /* Info/Warning/Success/Error text */
+    .stAlert {
+        color: #033c67;
+    }
+    
+    /* Primary buttons with DataPattern orange */
+    .stButton>button[kind="primary"] {
+        background-color: #f46902 !important;
+        color: white !important;
+        border: none;
+    }
+    .stButton>button[kind="primary"]:hover {
+        background-color: #f18a31 !important;
+        border: none;
+    }
+    
+    /* Secondary buttons */
+    .stButton>button[kind="secondary"] {
+        color: #033c67 !important;
+        border-color: #f46902 !important;
+    }
+    .stButton>button[kind="secondary"]:hover {
+        background-color: #f46902 !important;
+        color: white !important;
     }
     
     /* Links with orange accent */
     a {
-        color: #f46902;
+        color: #f46902 !important;
     }
     a:hover {
-        color: #f18a31;
+        color: #f18a31 !important;
     }
     
     /* Tab styling */
-    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
-        border-bottom-color: #f46902;
+    .stTabs [data-baseweb="tab-list"] button {
         color: #033c67;
+    }
+    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
+        border-bottom-color: #f46902 !important;
+        color: #033c67 !important;
+        font-weight: 600;
     }
     
     /* Progress bar */
     .stProgress > div > div > div > div {
-        background-color: #f46902;
+        background-color: #f46902 !important;
+    }
+    
+    /* Slider labels and values */
+    .stSlider label {
+        color: #033c67 !important;
+    }
+    
+    /* File uploader text */
+    .stFileUploader label {
+        color: #033c67 !important;
+    }
+    
+    /* Chat messages */
+    .stChatMessage {
+        color: #033c67;
+    }
+    
+    /* Code blocks - keep monospace but use blue */
+    code {
+        color: #033c67 !important;
+    }
+    pre {
+        color: #033c67 !important;
     }
 </style>
 """, unsafe_allow_html=True)
