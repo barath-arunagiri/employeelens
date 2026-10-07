@@ -1108,9 +1108,9 @@ def dataset_stats() -> dict:
                (SELECT COUNT(DISTINCT skill) FROM employee_skills)           AS skills,
                (SELECT COUNT(DISTINCT project) FROM employee_projects)       AS projects,
                (SELECT COUNT(*) FROM employee_certifications
-                 WHERE verified = 'true')                                    AS certifications_confirmed,
+                 WHERE verified = true OR verified = 'true')                 AS certifications_confirmed,
                (SELECT COUNT(*) FROM employee_certifications
-                 WHERE verified = 'false')                                   AS certifications_unconfirmed,
+                 WHERE verified = false OR verified = 'false')               AS certifications_unconfirmed,
                (SELECT COUNT(*) FROM employee_managers)                      AS reporting_links
         """
     ).iloc[0]
