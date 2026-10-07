@@ -44,6 +44,15 @@ st.markdown("""
     [data-testid="stSidebar"] {
         background-color: #f8f9fa;
     }
+
+    /* Sidebar logo – keep it compact and centered */
+    [data-testid="stSidebar"] img {
+        max-width: 100px !important;
+        height: auto !important;
+        display: block;
+        margin-left: auto;
+        margin-right: auto;
+    }
     
     /* ALL HEADERS - DataPattern blue */
     h1, h2, h3, h4, h5, h6 {
@@ -220,10 +229,10 @@ def get_agent():
 # ---------------------------------------------------------------- sidebar
 
 with st.sidebar:
-    # DataPattern logo (if available)
-    logo_path = ROOT / "app" / "assets" / "datapattern_logo.png"
+    # DataPattern logo (if available) – kept small so it fits the sidebar
+    logo_path = ROOT / "app" / "assets" / "Datapattern_logo.png"
     if logo_path.exists():
-        st.image(str(logo_path), width=250)
+        st.image(str(logo_path), width=100)
     else:
         # Fallback: styled header
         st.markdown(
