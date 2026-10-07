@@ -24,6 +24,70 @@ from src.database import repository as repo                                     
 
 st.set_page_config(page_title=APP_NAME, page_icon="🔎", layout="wide")
 
+# DataPattern branding colors
+DATAPATTERN_COLORS = {
+    "primary": "#033c67",      # Dark blue (company name)
+    "secondary": "#f46902",    # Orange (slogan)
+    "accent": "#f18a31",       # Light orange (icon)
+    "background": "#ffffff",   # White
+}
+
+# Custom CSS for DataPattern branding
+st.markdown("""
+<style>
+    /* DataPattern color scheme */
+    .stApp {
+        background-color: #ffffff;
+    }
+    
+    /* Sidebar styling */
+    [data-testid="stSidebar"] {
+        background-color: #f8f9fa;
+    }
+    
+    /* Primary buttons with DataPattern orange */
+    .stButton>button[kind="primary"] {
+        background-color: #f46902;
+        color: white;
+        border: none;
+    }
+    .stButton>button[kind="primary"]:hover {
+        background-color: #f18a31;
+        border: none;
+    }
+    
+    /* Headers with DataPattern blue */
+    h1, h2, h3 {
+        color: #033c67;
+    }
+    
+    /* Metrics styling */
+    [data-testid="stMetricValue"] {
+        color: #033c67;
+        font-weight: 600;
+    }
+    
+    /* Links with orange accent */
+    a {
+        color: #f46902;
+    }
+    a:hover {
+        color: #f18a31;
+    }
+    
+    /* Tab styling */
+    .stTabs [data-baseweb="tab-list"] button[aria-selected="true"] {
+        border-bottom-color: #f46902;
+        color: #033c67;
+    }
+    
+    /* Progress bar */
+    .stProgress > div > div > div > div {
+        background-color: #f46902;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # these are only shortcuts — the chat box takes any question
 SUGGESTIONS = [
     "Who works on the Phibro project?",
@@ -68,8 +132,20 @@ def get_agent():
 # ---------------------------------------------------------------- sidebar
 
 with st.sidebar:
-    st.markdown(f"### {APP_NAME}")
-    st.caption("Employee data assistant · DataPattern")
+    # DataPattern logo (if available)
+    logo_path = ROOT / "app" / "assets" / "datapattern_logo.png"
+    if logo_path.exists():
+        st.image(str(logo_path), width=250)
+    else:
+        # Fallback: styled header
+        st.markdown(
+            f'<h2 style="color: #033c67; margin-bottom: 0px;">{APP_NAME}</h2>'
+            '<p style="color: #f46902; font-size: 14px; margin-top: 0px;">'
+            '<b>Ensure Transformation</b></p>',
+            unsafe_allow_html=True
+        )
+    
+    st.caption("Employee data assistant")
 
     st.metric("Employees", STATS["employees"])
     cols = st.columns(2)
@@ -225,8 +301,10 @@ with management_tab:
         request = st.text_area(
             "Describe the change you want to make",
             placeholder=("Change EMP1001's designation to Senior Data Engineer.\n"
-                          "Add Python as a skill for EMP1005."),
+                          "Add Python as a skill for EMP1005.\n\n"
+                          "You can enter multiple requests, one per line."),
             key="management_request",
+            height=150,  # Explicit height for better multiline input
         )
         if st.button("Process Request", type="primary", key="process_management"):
             st.session_state.management_proposal = None
