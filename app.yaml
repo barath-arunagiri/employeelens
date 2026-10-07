@@ -5,3 +5,5 @@ command:
 env:
 - name: STREAMLIT_GATHER_USAGE_STATS
   value: 'false'
+- name: DATABRICKS_SQL_WAREHOUSE_ID
+  value: 'eafe19ac379b5437'
