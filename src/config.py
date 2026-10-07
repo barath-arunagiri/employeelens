@@ -35,11 +35,12 @@ VALID_EMAIL_DOMAIN = "@datapattern.ai"
 
 # Multi-model fallback: if one model hits rate limit, automatically try the next.
 # This prevents the agent from failing when a single model is rate-limited.
+# Only includes models that exist in this workspace (verified via serving_endpoints API)
 DATABRICKS_MODELS = [
-    "databricks-llama-4-maverick",           # Primary: fast, good quality
-    "databricks-meta-llama-3-1-70b-instruct",  # Fallback 1
-    "databricks-dbrx-instruct",              # Fallback 2
-    "databricks-meta-llama-3-1-405b-instruct", # Fallback 3: most capable
+    "databricks-llama-4-maverick",              # Primary: fast, good quality
+    "databricks-meta-llama-3-3-70b-instruct",   # Fallback 1: larger context
+    "databricks-qwen3-next-80b-a3b-instruct",   # Fallback 2: powerful alternative
+    "databricks-deepseek-v4-flash-0731",        # Fallback 3: fast inference
 ]
 
 # Legacy single-model config (for backward compatibility)
