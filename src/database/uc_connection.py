@@ -70,8 +70,10 @@ def _build_sql(sql: str, params: list | None = None) -> str:
 
 
 def _fix_table_names(sql: str) -> str:
-    """Replace bare table names with full UC paths."""
-    # Replace table references with UC-qualified names
+    """Replace bare table names with full UC paths.
+    
+    Note: Query aliases should NOT use table names to avoid conflicts.
+    """
     for short, full in TABLES.items():
         # Match word boundary + table name + word boundary
         sql = re.sub(rf'\b{re.escape(short)}\b', full, sql)

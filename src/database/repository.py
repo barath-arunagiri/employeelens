@@ -852,18 +852,27 @@ def list_skills() -> list[str]:
 def dataset_stats() -> dict:
     row = q(
         """
-        SELECT (SELECT COUNT(*) FROM employees)                              AS employees,
-               (SELECT COUNT(DISTINCT employee_id) FROM employee_skills)     AS with_skills,
-               (SELECT COUNT(DISTINCT skill) FROM employee_skills)           AS skills,
-               (SELECT COUNT(DISTINCT project) FROM employee_projects)       AS projects,
+        SELECT (SELECT COUNT(*) FROM employees)                              AS total_employees,
+               (SELECT COUNT(DISTINCT employee_id) FROM employee_skills)     AS employees_with_skills,
+               (SELECT COUNT(DISTINCT skill) FROM employee_skills)           AS total_skills,
+               (SELECT COUNT(DISTINCT project) FROM employee_projects)       AS total_projects,
                (SELECT COUNT(*) FROM employee_certifications
                  WHERE verified = true OR verified = 'true')                 AS certifications_confirmed,
                (SELECT COUNT(*) FROM employee_certifications
                  WHERE verified = false OR verified = 'false')               AS certifications_unconfirmed,
-               (SELECT COUNT(*) FROM employee_managers)                      AS reporting_links
+               (SELECT COUNT(*) FROM employee_managers)                      AS total_reporting_links
         """
     ).iloc[0]
-    return {k: int(v) for k, v in row.items()}
+    # Map new column names to expected keys for backwards compatibility
+    return {
+        'employees': int(row['total_employees']),
+        'with_skills': int(row['employees_with_skills']),
+        'skills': int(row['total_skills']),
+        'projects': int(row['total_projects']),
+        'certifications_confirmed': int(row['certifications_confirmed']),
+        'certifications_unconfirmed': int(row['certifications_unconfirmed']),
+        'reporting_links': int(row['total_reporting_links'])
+    }
 
 
 # --------------------------------------------------------------- free SQL
