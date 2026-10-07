@@ -277,7 +277,7 @@ TOOLS = [
             "properties": {
                 "sql": {
                     "type": "string",
-                    "description": "A single SELECT statement. DuckDB syntax.",
+                    "description": "A single SELECT statement. Databricks SQL syntax.",
                 },
             },
             "required": ["sql"],

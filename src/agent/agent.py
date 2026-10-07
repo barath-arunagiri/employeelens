@@ -269,7 +269,7 @@ class PeopleLensAgent:
         Handle employee-data management requests.
 
         Management tools only create proposals.
-        They do not directly write to DuckDB.
+        They do not directly write to Unity Catalog.
         """
 
         messages = [
@@ -290,7 +290,7 @@ class PeopleLensAgent:
                     "- Once you have employee_ids, call proposal tools (propose_add_certification, propose_add_skill, etc). "
                     "- For batch requests (e.g., 'add cert to Barath, Nisha, Sanjai'), call propose_add_certification THREE TIMES in the SAME response (once for each employee_id). "
                     "- Use parallel tool calls - do not wait for one proposal to complete before creating the next. "
-                    "- Proposal tools never write to DuckDB - they only create proposals for user confirmation. "
+                    "- Proposal tools never write to Unity Catalog - they only create proposals for user confirmation. "
                     "\n\nHISTORY QUERIES:\n"
                     "- For history questions, use get_audit_history and answer from its rows without confirmation. "
                     "\n\nSTRICT RULES:\n"

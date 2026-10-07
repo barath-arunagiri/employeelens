@@ -2,8 +2,8 @@
 Employeelens — data access layer.
 
 Every SQL statement in the project lives here. The agent and the tools
-call these functions and never see the database, so swapping DuckDB for
-Postgres later means editing this file only.
+call these functions and never see the database, All data lives in Unity Catalog Delta tables.
+All queries use the Databricks SDK statement execution API.
 
 All queries are parameterised. Nothing here interpolates a caller's
 string into SQL.
@@ -13,43 +13,13 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 
-import duckdb
 import pandas as pd
 
-from src.config import DB_PATH
-
-# Import Delta sync module - prefer SQL-based version for Databricks Apps
-DELTA_SYNC_AVAILABLE = False
-delta_sync = None
-
-try:
-    from src.database import delta_sync_sql as delta_sync
-    DELTA_SYNC_AVAILABLE = True
-except (ImportError, RuntimeError):
-    # Fall back to Spark-based delta_sync
-    try:
-        from src.database import delta_sync
-        DELTA_SYNC_AVAILABLE = True
-    except (ImportError, RuntimeError):
-        DELTA_SYNC_AVAILABLE = False
-
-
-def _con() -> duckdb.DuckDBPyConnection:
-    if not DB_PATH.exists():
-        raise FileNotFoundError(
-            f"No database at {DB_PATH}. Run:\n"
-            "  python -m src.ingestion.normalize\n"
-            "  python -m src.ingestion.load_duckdb"
-        )
-    return duckdb.connect(str(DB_PATH))
+from src.database import uc_connection as uc
 
 
 def q(sql: str, params: list | None = None) -> pd.DataFrame:
-    connection = _con()
-    try:
-        return connection.execute(sql, params or []).df()
-    finally:
-        connection.close()
+    return uc.query(sql, params)
 
 
 MANAGEMENT_FIELDS = {
@@ -64,54 +34,9 @@ MANAGEMENT_FIELDS = {
 }
 
 
-def _write_con() -> duckdb.DuckDBPyConnection:
-    if not DB_PATH.exists():
-        raise FileNotFoundError(f"No database at {DB_PATH}")
-    connection = duckdb.connect(str(DB_PATH))
-    _ensure_management_schema(connection)
-    return connection
-
-
-def _ensure_management_schema(connection: duckdb.DuckDBPyConnection) -> None:
-    columns = {
-        row[0] for row in connection.execute(
-            "SELECT column_name FROM information_schema.columns "
-            "WHERE table_name = 'employees'"
-        ).fetchall()
-    }
-    for column in ("position", "designation", "team", "department", "location", "employment_status", "joining_date"):
-        if column not in columns:
-            connection.execute(f"ALTER TABLE employees ADD COLUMN {column} VARCHAR")
-
-    project_columns = {
-        row[0] for row in connection.execute(
-            "SELECT column_name FROM information_schema.columns "
-            "WHERE table_name = 'employee_projects'"
-        ).fetchall()
-    }
-    if "role" not in project_columns:
-        connection.execute("ALTER TABLE employee_projects ADD COLUMN role VARCHAR")
-    if "project_type" not in project_columns:
-        connection.execute("ALTER TABLE employee_projects ADD COLUMN project_type VARCHAR")
-
-    connection.execute("""
-        CREATE TABLE IF NOT EXISTS employee_data_audit (
-            timestamp   TIMESTAMP NOT NULL,
-            operation   VARCHAR NOT NULL,
-            employee_id VARCHAR,
-            table_name  VARCHAR NOT NULL,
-            field_name  VARCHAR,
-            old_value   VARCHAR,
-            new_value   VARCHAR,
-            status      VARCHAR NOT NULL,
-            error_message VARCHAR
-        )
-    """)
-
-
 def ensure_management_schema() -> None:
-    connection = _write_con()
-    connection.close()
+    """No-op — Unity Catalog tables already have all columns."""
+    pass
 
 
 def get_audit_history(employee_id: str | None = None,
@@ -132,15 +57,15 @@ def get_audit_history(employee_id: str | None = None,
     limit = max(1, min(int(limit), 100))
     where = " AND ".join(clauses) if clauses else "TRUE"
     return q(
-        f"SELECT * FROM employee_data_audit WHERE {where} "
+        f"SELECT * FROM change_audit_log WHERE {where} "
         "ORDER BY timestamp DESC LIMIT ?", params + [limit]
     )
 
 
-def _employee_exists(connection: duckdb.DuckDBPyConnection, employee_id: str) -> bool:
-    return connection.execute(
+def _employee_exists(employee_id: str) -> bool:
+    return uc.query(
         "SELECT 1 FROM employees WHERE employee_id = ?", [employee_id]
-    ).fetchone() is not None
+    ) is not None
 
 
 def _validate_employee_value(field: str, value: str) -> str:
@@ -158,104 +83,86 @@ def propose_employee_update(employee_id: str, field: str, new_value: str) -> dic
     column = MANAGEMENT_FIELDS.get(field.lower().strip())
     if not column:
         raise ValueError(f"field '{field}' is not allowed")
-    connection = _write_con()
-    try:
-        row = connection.execute(
-            f"SELECT {column} FROM employees WHERE employee_id = ?", [employee_id]
-        ).fetchone()
-        if row is None:
-            raise ValueError(f"employee '{employee_id}' was not found")
-        value = _validate_employee_value(field, new_value)
-        return {
-            "operation": "UPDATE", "table": "employees", "employee_id": employee_id,
-            "field": column, "old_value": row[0], "new_value": value,
-            "requires_confirmation": True,
-        }
-    finally:
-        connection.close()
+    row = uc.fetchone(
+        f"SELECT {column} FROM employees WHERE employee_id = ?", [employee_id]
+    )
+    if row is None:
+        raise ValueError(f"employee '{employee_id}' was not found")
+    value = _validate_employee_value(field, new_value)
+    return {
+        "operation": "UPDATE", "table": "employees", "employee_id": employee_id,
+        "field": column, "old_value": row[0], "new_value": value,
+        "requires_confirmation": True,
+    }
 
 
 def propose_add_skill(employee_id: str, skill: str, category: str = "Other",
                       qualifier: str = "") -> dict:
-    connection = _write_con()
-    try:
-        if not _employee_exists(connection, employee_id):
-            raise ValueError(f"employee '{employee_id}' was not found")
-        skill = _validate_employee_value("skill", skill)
-        duplicate = connection.execute(
-            "SELECT 1 FROM employee_skills WHERE employee_id = ? AND lower(skill) = lower(?)",
-            [employee_id, skill],
-        ).fetchone()
-        if duplicate:
-            raise ValueError(f"skill '{skill}' already exists for {employee_id}")
-        return {
-            "operation": "INSERT", "table": "employee_skills", "employee_id": employee_id,
-            "field": "skill", "old_value": None, "new_value": skill,
-            "category": category or "Other", "qualifier": qualifier or None,
-            "requires_confirmation": True,
-        }
-    finally:
-        connection.close()
+    if not _employee_exists(employee_id):
+        raise ValueError(f"employee '{employee_id}' was not found")
+    skill = _validate_employee_value("skill", skill)
+    duplicate = uc.fetchone(
+        "SELECT 1 FROM employee_skills WHERE employee_id = ? AND lower(skill) = lower(?)",
+        [employee_id, skill],
+    )
+    if duplicate:
+        raise ValueError(f"skill '{skill}' already exists for {employee_id}")
+    return {
+        "operation": "INSERT", "table": "employee_skills", "employee_id": employee_id,
+        "field": "skill", "old_value": None, "new_value": skill,
+        "category": category or "Other", "qualifier": qualifier or None,
+        "requires_confirmation": True,
+    }
 
 
 def propose_remove_skill(employee_id: str, skill: str) -> dict:
-    connection = _write_con()
-    try:
-        if not _employee_exists(connection, employee_id):
-            raise ValueError(f"employee '{employee_id}' was not found")
-        row = connection.execute(
-            "SELECT skill FROM employee_skills WHERE employee_id = ? "
-            "AND lower(skill) = lower(?) LIMIT 1", [employee_id, skill.strip()]
-        ).fetchone()
-        if row is None:
-            raise ValueError(f"skill '{skill}' was not found for {employee_id}")
-        return {
-            "operation": "DELETE", "table": "employee_skills", "employee_id": employee_id,
-            "field": "skill", "old_value": row[0], "new_value": None,
-            "requires_confirmation": True,
-        }
-    finally:
-        connection.close()
+    if not _employee_exists(employee_id):
+        raise ValueError(f"employee '{employee_id}' was not found")
+    row = uc.fetchone(
+        "SELECT skill FROM employee_skills WHERE employee_id = ? "
+        "AND lower(skill) = lower(?) LIMIT 1", [employee_id, skill.strip()]
+    )
+    if row is None:
+        raise ValueError(f"skill '{skill}' was not found for {employee_id}")
+    return {
+        "operation": "DELETE", "table": "employee_skills", "employee_id": employee_id,
+        "field": "skill", "old_value": row[0], "new_value": None,
+        "requires_confirmation": True,
+    }
 
 
 def propose_add_certification(employee_id: str, certification: str,
                               vendor: str = "", verified: str = "true") -> dict:
-    connection = _write_con()
-    try:
-        if not _employee_exists(connection, employee_id):
-            raise ValueError(f"employee '{employee_id}' was not found")
-        certification = _validate_employee_value("certification", certification)
-        if verified not in ("true", "false"):
-            raise ValueError("verified must be 'true' or 'false'")
-        duplicate = connection.execute(
-            "SELECT 1 FROM employee_certifications WHERE employee_id = ? "
-            "AND lower(certification) = lower(?)", [employee_id, certification]
-        ).fetchone()
-        if duplicate:
-            raise ValueError(f"certification '{certification}' already exists for {employee_id}")
-        return {
-            "operation": "INSERT", "table": "employee_certifications", "employee_id": employee_id,
-            "field": "certification", "old_value": None, "new_value": certification,
-            "vendor": vendor.strip() or None, "verified": verified,
-            "requires_confirmation": True,
-        }
-    finally:
-        connection.close()
+    if not _employee_exists(employee_id):
+        raise ValueError(f"employee '{employee_id}' was not found")
+    certification = _validate_employee_value("certification", certification)
+    if verified not in ("true", "false"):
+        raise ValueError("verified must be 'true' or 'false'")
+    duplicate = uc.fetchone(
+        "SELECT 1 FROM employee_certifications WHERE employee_id = ? "
+        "AND lower(certification) = lower(?)", [employee_id, certification]
+    )
+    if duplicate:
+        raise ValueError(f"certification '{certification}' already exists for {employee_id}")
+    return {
+        "operation": "INSERT", "table": "employee_certifications", "employee_id": employee_id,
+        "field": "certification", "old_value": None, "new_value": certification,
+        "vendor": vendor.strip() or None, "verified": verified,
+        "requires_confirmation": True,
+    }
 
 
 def propose_add_project(employee_id: str, project: str, client: str = "",
                         technologies: str = "", role: str = "",
                         project_type: str = "main") -> dict:
-    connection = _write_con()
-    try:
-        if not _employee_exists(connection, employee_id):
+        if not _employee_exists(employee_id):
             raise ValueError(f"employee '{employee_id}' was not found")
         project = _validate_employee_value("project", project)
         norm_type = (project_type or "main").strip().lower()
         if norm_type not in {"main", "support"}:
             raise ValueError("project_type must be 'main' or 'support'")
-        duplicate = connection.execute(
-            "SELECT 1 FROM employee_projects WHERE employee_id = ? AND lower(project) = lower(?) "
+        duplicate = uc.fetchone(
+        "SELECT 1 FROM employee_projects WHERE employee_id = ? AND lower(project) = lower(?) "
             "AND lower(COALESCE(project_type, 'main')) = lower(?)",
             [employee_id, project, norm_type],
         ).fetchone()
@@ -268,19 +175,16 @@ def propose_add_project(employee_id: str, project: str, client: str = "",
             "role": role.strip() or None, "project_type": norm_type,
             "requires_confirmation": True,
         }
-    finally:
-        connection.close()
 
 
 def propose_remove_project(employee_id: str, project: str) -> dict:
-    connection = _write_con()
-    try:
-        if not _employee_exists(connection, employee_id):
+        if not _employee_exists(employee_id):
             raise ValueError(f"employee '{employee_id}' was not found")
-        row = connection.execute(
+    row = uc.fetchone(
             "SELECT project FROM employee_projects WHERE employee_id = ? "
-            "AND lower(project) = lower(?) LIMIT 1", [employee_id, project.strip()]
-        ).fetchone()
+            "AND lower(project) = lower(?) LIMIT 1",
+            [employee_id, project.strip()]
+        )
         if row is None:
             raise ValueError(f"project '{project}' was not found for {employee_id}")
         return {
@@ -288,22 +192,18 @@ def propose_remove_project(employee_id: str, project: str) -> dict:
             "field": "project", "old_value": row[0], "new_value": None,
             "requires_confirmation": True,
         }
-    finally:
-        connection.close()
 
 
 def propose_move_project(employee_id: str, from_project: str, to_project: str,
                          client: str = "", technologies: str = "", role: str = "",
                          project_type: str | None = None) -> dict:
-    connection = _write_con()
-    try:
-        if not _employee_exists(connection, employee_id):
+        if not _employee_exists(employee_id):
             raise ValueError(f"employee '{employee_id}' was not found")
-        old = connection.execute(
+        old = uc.fetchone(
             "SELECT project, client, technologies, role, COALESCE(project_type, 'main') FROM employee_projects "
             "WHERE employee_id = ? AND lower(project) = lower(?) LIMIT 1",
             [employee_id, from_project.strip()],
-        ).fetchone()
+        )
         if old is None:
             raise ValueError(f"project '{from_project}' was not found for {employee_id}")
         to_project = _validate_employee_value("to_project", to_project)
@@ -312,7 +212,7 @@ def propose_move_project(employee_id: str, from_project: str, to_project: str,
         norm_type = (project_type or old[4] or "main").strip().lower()
         if norm_type not in {"main", "support"}:
             raise ValueError("project_type must be 'main' or 'support'")
-        if connection.execute(
+        if uc.fetchone(
             "SELECT 1 FROM employee_projects WHERE employee_id = ? AND lower(project) = lower(?) "
             "AND lower(COALESCE(project_type, 'main')) = lower(?)",
             [employee_id, to_project.strip(), norm_type],
@@ -325,37 +225,31 @@ def propose_move_project(employee_id: str, from_project: str, to_project: str,
             "role": role.strip() or old[3], "project_type": norm_type,
             "requires_confirmation": True,
         }
-    finally:
-        connection.close()
 
 
 def propose_create_employee(employee_id: str, name: str, email: str = "") -> dict:
-    connection = _write_con()
-    try:
         employee_id = _validate_employee_value("employee_id", employee_id)
         name = _validate_employee_value("name", name)
         if email:
             email = _validate_employee_value("email", email)
             if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
                 raise ValueError("email is not valid")
-        if connection.execute("SELECT 1 FROM employees WHERE employee_id = ?", [employee_id]).fetchone():
+        if uc.fetchone("SELECT 1 FROM employees WHERE employee_id = ?",
+            [employee_id]
+        ):
             raise ValueError(f"employee '{employee_id}' already exists")
         return {
             "operation": "INSERT", "table": "employees", "employee_id": employee_id,
             "field": "employee", "old_value": None, "new_value": name,
             "email": email or None, "requires_confirmation": True,
         }
-    finally:
-        connection.close()
 
 
 def propose_delete_certification(employee_id: str, certification: str) -> dict:
-    connection = _write_con()
-    try:
-        if not _employee_exists(connection, employee_id):
+        if not _employee_exists(employee_id):
             raise ValueError(f"employee '{employee_id}' was not found")
-        row = connection.execute(
-            "SELECT certification FROM employee_certifications "
+        row = uc.fetchone(
+        "SELECT certification FROM employee_certifications "
             "WHERE employee_id = ? AND lower(certification) = lower(?) LIMIT 1",
             [employee_id, certification.strip()],
         ).fetchone()
@@ -366,19 +260,16 @@ def propose_delete_certification(employee_id: str, certification: str) -> dict:
             "field": "certification", "old_value": row[0], "new_value": None,
             "requires_confirmation": True,
         }
-    finally:
-        connection.close()
 
 
 def propose_update_project_role(employee_id: str, project: str, role: str) -> dict:
-    connection = _write_con()
-    try:
-        if not _employee_exists(connection, employee_id):
+        if not _employee_exists(employee_id):
             raise ValueError(f"employee '{employee_id}' was not found")
-        row = connection.execute(
+    row = uc.fetchone(
             "SELECT role FROM employee_projects WHERE employee_id = ? "
-            "AND lower(project) = lower(?) LIMIT 1", [employee_id, project.strip()]
-        ).fetchone()
+            "AND lower(project) = lower(?) LIMIT 1",
+            [employee_id, project.strip()]
+        )
         if row is None:
             raise ValueError(f"project '{project}' was not found for {employee_id}")
         role = _validate_employee_value("role", role)
@@ -387,20 +278,17 @@ def propose_update_project_role(employee_id: str, project: str, role: str) -> di
             "project": project.strip(), "field": "role", "old_value": row[0],
             "new_value": role, "requires_confirmation": True,
         }
-    finally:
-        connection.close()
 
 
 def propose_update_project_technologies(employee_id: str, project: str,
                                         technologies: str) -> dict:
-    connection = _write_con()
-    try:
-        if not _employee_exists(connection, employee_id):
+        if not _employee_exists(employee_id):
             raise ValueError(f"employee '{employee_id}' was not found")
-        row = connection.execute(
-            "SELECT technologies FROM employee_projects WHERE employee_id = ? "
-            "AND lower(project) = lower(?) LIMIT 1", [employee_id, project.strip()]
-        ).fetchone()
+        row = uc.fetchone(
+        "SELECT technologies FROM employee_projects WHERE employee_id = ? "
+            "AND lower(project) = lower(?) LIMIT 1",
+        [employee_id, project.strip()]
+    )
         if row is None:
             raise ValueError(f"project '{project}' was not found for {employee_id}")
         return {
@@ -409,20 +297,17 @@ def propose_update_project_technologies(employee_id: str, project: str,
             "new_value": _validate_employee_value("technologies", technologies),
             "requires_confirmation": True,
         }
-    finally:
-        connection.close()
 
 
 def propose_update_manager(employee_id: str, manager: str) -> dict:
-    connection = _write_con()
-    try:
-        if not _employee_exists(connection, employee_id):
+        if not _employee_exists(employee_id):
             raise ValueError(f"employee '{employee_id}' was not found")
-        managers = connection.execute(
-            "SELECT employee_id, name FROM employees "
+        managers = uc.fetchone(
+        "SELECT employee_id, name FROM employees "
             "WHERE employee_id = ? OR lower(name) LIKE '%' || lower(?) || '%' "
-            "ORDER BY name", [manager.strip(), manager.strip()]
-        ).fetchall()
+            "ORDER BY name",
+        [manager.strip(), manager.strip()]
+    ).values.tolist()
         if not managers:
             raise ValueError(f"manager '{manager}' was not found")
         if len(managers) > 1:
@@ -431,11 +316,12 @@ def propose_update_manager(employee_id: str, manager: str) -> dict:
         reporting_id, manager_name = managers[0]
         if reporting_id == employee_id:
             raise ValueError("an employee cannot report to themselves")
-        current = connection.execute(
+    current = uc.fetchone(
             "SELECT m.reporting_id, e.name FROM employee_managers m "
             "JOIN employees e ON e.employee_id = m.reporting_id "
-            "WHERE m.employee_id = ? ORDER BY e.name LIMIT 1", [employee_id]
-        ).fetchone()
+            "WHERE m.employee_id = ? ORDER BY e.name LIMIT 1",
+            [employee_id]
+        )
         return {
             "operation": "UPDATE", "table": "employee_managers", "employee_id": employee_id,
             "field": "reporting_id", "old_value": current[0] if current else None,
@@ -443,78 +329,26 @@ def propose_update_manager(employee_id: str, manager: str) -> dict:
             "new_value": reporting_id, "new_manager_name": manager_name,
             "requires_confirmation": True,
         }
-    finally:
-        connection.close()
 
 
-def _audit(connection, proposal: dict, status: str, error_message: str | None = None) -> None:
-    connection.execute(
-        "INSERT INTO employee_data_audit VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [datetime.now(timezone.utc), proposal.get("operation"), proposal.get("employee_id"),
-         proposal.get("table"), proposal.get("field"), str(proposal.get("old_value"))
-         if proposal.get("old_value") is not None else None,
-         str(proposal.get("new_value")) if proposal.get("new_value") is not None else None,
-         status, error_message],
+def _audit(proposal: dict, status: str, error_message: str | None = None) -> None:
+    """Write audit entry to Unity Catalog."""
+    uc.write_audit(
+        operation=proposal.get("operation", ""),
+        employee_id=proposal.get("employee_id", ""),
+        table_name=proposal.get("table", ""),
+        field_name=proposal.get("field"),
+        old_value=proposal.get("old_value"),
+        new_value=proposal.get("new_value"),
+        status=status,
+        error_message=error_message,
     )
 
 
-def _execute_delta_write(proposal: dict) -> dict:
-    """Write proposal to Delta tables. Returns {success, verified_value, error}."""
-    operation = proposal["operation"]
-    table = proposal["table"]
-    employee_id = proposal["employee_id"]
-    
-    if table == "employees" and operation == "UPDATE":
-        field = proposal["field"]
-        return delta_sync.write_employee_update(
-            employee_id, field, proposal["new_value"], proposal.get("old_value")
-        )
-    elif table == "employee_skills" and operation == "INSERT":
-        return delta_sync.write_skill(
-            employee_id, proposal["new_value"], 
-            proposal.get("category", "Other"), proposal.get("qualifier", "")
-        )
-    elif table == "employee_skills" and operation == "DELETE":
-        return delta_sync.delete_skill(employee_id, proposal["old_value"])
-    elif table == "employee_certifications" and operation == "INSERT":
-        return delta_sync.write_certification(
-            employee_id, proposal["new_value"], proposal.get("vendor", ""),
-            "data_management", proposal.get("verified", "true")
-        )
-    elif table == "employee_certifications" and operation == "DELETE":
-        return delta_sync.delete_certification(employee_id, proposal["old_value"])
-    elif table == "employee_projects" and operation == "INSERT":
-        return delta_sync.write_project(
-            employee_id, proposal["new_value"], proposal.get("client", ""),
-            proposal.get("technologies", ""), proposal.get("role", ""),
-            proposal.get("project_type", "main")
-        )
-    elif table == "employee_projects" and operation == "DELETE":
-        return delta_sync.delete_project(employee_id, proposal["old_value"])
-    elif table == "employee_projects" and operation == "UPDATE":
-        field = proposal.get("field")
-        return delta_sync.update_project_field(
-            employee_id, proposal["project"], field, proposal["new_value"]
-        )
-    elif table == "employees" and operation == "INSERT":
-        return delta_sync.create_employee(
-            employee_id, proposal["new_value"], proposal.get("email", "")
-        )
-    elif table == "employee_managers" and operation == "UPDATE":
-        return delta_sync.update_manager(employee_id, proposal["new_value"])
-    else:
-        return {"success": False, "error": "Unsupported operation"}
-
-
 def execute_proposal(proposal: dict) -> dict:
-    """Execute a proposal: write to Delta first, then update DuckDB cache.
+    """Execute a proposal: write directly to Unity Catalog Delta tables.
     
-    Flow:
-    1. Write to Delta (source of truth) with idempotent MERGE
-    2. On success, update DuckDB cache
-    3. Audit logging handled by Delta sync
-    
-    If Delta write fails, nothing is changed and error is raised.
+    No DuckDB, no caching — writes go straight to Delta.
     """
     if not proposal.get("requires_confirmation"):
         raise ValueError("write proposal requires confirmation")
@@ -523,138 +357,135 @@ def execute_proposal(proposal: dict) -> dict:
     table = proposal["table"]
     employee_id = proposal["employee_id"]
     
-    # Step 1: Write to Delta first (if available)
-    verified = None
-    if DELTA_SYNC_AVAILABLE:
-        try:
-            delta_result = _execute_delta_write(proposal)
-            if not delta_result.get("success"):
-                # Delta write failed, fall back to DuckDB only
-                import warnings
-                warnings.warn(f"Delta write failed, using DuckDB only: {delta_result.get('error')}")
-            else:
-                verified = delta_result.get("verified_value")
-        except Exception as e:
-            # Delta sync unavailable at runtime (e.g., no Spark session)
-            # Fall back to DuckDB-only mode
-            import warnings
-            warnings.warn(f"Delta sync unavailable, using DuckDB only: {e}")
+    # Verify employee exists (except for new employee creation)
+    if not _employee_exists(employee_id) and not (
+        table == "employees" and operation == "INSERT"
+    ):
+        raise ValueError(f"employee '{employee_id}' was not found")
     
-    # Step 2: Update DuckDB cache
-    connection = _write_con()
+    verified = None
+    
     try:
-        connection.execute("BEGIN")
-        
-        # Verify employee exists (except for new employee creation)
-        if not _employee_exists(connection, employee_id) and not (
-            table == "employees" and operation == "INSERT"
-        ):
-            raise ValueError(f"employee '{employee_id}' was not found")
-
         if table == "employees" and operation == "UPDATE":
             field = proposal["field"]
             if field not in set(MANAGEMENT_FIELDS.values()):
                 raise ValueError("field is not allowed")
             value = _validate_employee_value(field, proposal["new_value"])
-            connection.execute(f"UPDATE employees SET {field} = ? WHERE employee_id = ?", [value, employee_id])
-            verified = connection.execute(
-                f"SELECT {field} FROM employees WHERE employee_id = ?", [employee_id]
-            ).fetchone()[0]
+            uc.execute(f"UPDATE employees SET {field} = ? WHERE employee_id = ?", [value, employee_id])
+            verified = uc.fetchval(f"SELECT {field} FROM employees WHERE employee_id = ?", [employee_id])
+        
         elif table == "employee_skills" and operation == "INSERT":
-            connection.execute(
+            uc.execute(
                 "INSERT INTO employee_skills (employee_id, skill, category, qualifier, source) "
                 "VALUES (?, ?, ?, ?, ?)",
                 [employee_id, proposal["new_value"], proposal.get("category", "Other"),
                  proposal.get("qualifier"), "data_management"],
             )
-            verified = connection.execute(
+            verified = uc.fetchval(
                 "SELECT skill FROM employee_skills WHERE employee_id = ? AND lower(skill) = lower(?)",
                 [employee_id, proposal["new_value"]],
-            ).fetchone()[0]
+            )
+        
         elif table == "employee_skills" and operation == "DELETE":
-            connection.execute(
+            uc.execute(
                 "DELETE FROM employee_skills WHERE employee_id = ? AND lower(skill) = lower(?)",
                 [employee_id, proposal["old_value"]],
             )
-            verified = connection.execute(
+            count = uc.fetchval(
                 "SELECT COUNT(*) FROM employee_skills WHERE employee_id = ? AND lower(skill) = lower(?)",
                 [employee_id, proposal["old_value"]],
-            ).fetchone()[0]
-            if verified != 0:
+            )
+            if count and count != 0:
                 raise ValueError("skill could not be deleted")
+            verified = 0
+        
         elif table == "employee_certifications" and operation == "INSERT":
-            connection.execute(
+            verified_value = proposal.get("verified", "true")
+            verified_bool = verified_value in (True, "true", "True", 1)
+            uc.execute(
                 "INSERT INTO employee_certifications "
                 "(employee_id, certification, vendor, source, verified, raw_text) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 [employee_id, proposal["new_value"], proposal.get("vendor"),
-                 "data_management", proposal.get("verified", "true"), proposal["new_value"]],
+                 "data_management", verified_bool, proposal["new_value"]],
             )
-            verified = connection.execute(
+            verified = uc.fetchval(
                 "SELECT certification FROM employee_certifications WHERE employee_id = ? "
-                "AND lower(certification) = lower(?)", [employee_id, proposal["new_value"]]
-            ).fetchone()[0]
+                "AND lower(certification) = lower(?)",
+                [employee_id, proposal["new_value"]],
+            )
+        
         elif table == "employee_certifications" and operation == "DELETE":
-            result = connection.execute(
+            uc.execute(
                 "DELETE FROM employee_certifications WHERE employee_id = ? "
                 "AND lower(certification) = lower(?)",
                 [employee_id, proposal["old_value"]],
             )
-            verified = connection.execute(
+            count = uc.fetchval(
                 "SELECT COUNT(*) FROM employee_certifications WHERE employee_id = ? "
-                "AND lower(certification) = lower(?)", [employee_id, proposal["old_value"]]
-            ).fetchone()[0]
-            if result.rowcount == 0 or verified != 0:
+                "AND lower(certification) = lower(?)",
+                [employee_id, proposal["old_value"]],
+            )
+            if count and count != 0:
                 raise ValueError("certification could not be deleted")
+            verified = 0
+        
         elif table == "employee_projects" and operation == "UPDATE" and proposal.get("field") == "role":
-            connection.execute(
+            uc.execute(
                 "UPDATE employee_projects SET role = ? WHERE employee_id = ? AND lower(project) = lower(?)",
                 [proposal["new_value"], employee_id, proposal["project"]],
             )
-            verified = connection.execute(
+            verified = uc.fetchval(
                 "SELECT role FROM employee_projects WHERE employee_id = ? AND lower(project) = lower(?)",
                 [employee_id, proposal["project"]],
-            ).fetchone()[0]
+            )
+        
         elif table == "employee_projects" and operation == "UPDATE" and proposal.get("field") == "technologies":
-            connection.execute(
+            uc.execute(
                 "UPDATE employee_projects SET technologies = ? WHERE employee_id = ? "
                 "AND lower(project) = lower(?)",
                 [proposal["new_value"], employee_id, proposal["project"]],
             )
-            verified = connection.execute(
+            verified = uc.fetchval(
                 "SELECT technologies FROM employee_projects WHERE employee_id = ? "
-                "AND lower(project) = lower(?)", [employee_id, proposal["project"]]
-            ).fetchone()[0]
+                "AND lower(project) = lower(?)",
+                [employee_id, proposal["project"]],
+            )
+        
         elif table == "employee_projects" and operation == "INSERT":
-            connection.execute(
+            uc.execute(
                 "INSERT INTO employee_projects "
                 "(employee_id, project, client, technologies, role, project_type) VALUES (?, ?, ?, ?, ?, ?)",
                 [employee_id, proposal["new_value"], proposal.get("client"),
                  proposal.get("technologies"), proposal.get("role"),
                  proposal.get("project_type", "main")],
             )
-            verified = connection.execute(
+            verified = uc.fetchval(
                 "SELECT project FROM employee_projects WHERE employee_id = ? "
                 "AND lower(project) = lower(?) AND lower(COALESCE(project_type, 'main')) = lower(?)",
-                [employee_id, proposal["new_value"], proposal.get("project_type", "main")]
-            ).fetchone()[0]
+                [employee_id, proposal["new_value"], proposal.get("project_type", "main")],
+            )
+        
         elif table == "employee_projects" and operation == "DELETE":
-            connection.execute(
+            uc.execute(
                 "DELETE FROM employee_projects WHERE employee_id = ? AND lower(project) = lower(?)",
                 [employee_id, proposal["old_value"]],
             )
-            verified = connection.execute(
+            count = uc.fetchval(
                 "SELECT COUNT(*) FROM employee_projects WHERE employee_id = ? "
-                "AND lower(project) = lower(?)", [employee_id, proposal["old_value"]]
-            ).fetchone()[0]
-            if verified != 0:
+                "AND lower(project) = lower(?)",
+                [employee_id, proposal["old_value"]],
+            )
+            if count and count != 0:
                 raise ValueError("project assignment could not be deleted")
+            verified = 0
+        
         elif table == "employee_projects" and operation == "MOVE":
-            connection.execute(
+            uc.execute(
                 "DELETE FROM employee_projects WHERE employee_id = ? AND lower(project) = lower(?)",
                 [employee_id, proposal["old_value"]],
             )
-            connection.execute(
+            uc.execute(
                 "INSERT INTO employee_projects "
                 "(employee_id, project, client, technologies, role, project_type) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
@@ -662,138 +493,56 @@ def execute_proposal(proposal: dict) -> dict:
                  proposal.get("technologies"), proposal.get("role"),
                  proposal.get("project_type", "main")],
             )
-            verified = connection.execute(
+            verified = uc.fetchval(
                 "SELECT project FROM employee_projects WHERE employee_id = ? "
-                "AND lower(project) = lower(?)", [employee_id, proposal["new_value"]]
-            ).fetchone()[0]
+                "AND lower(project) = lower(?)",
+                [employee_id, proposal["new_value"]],
+            )
+        
         elif table == "employees" and operation == "INSERT":
-            connection.execute(
+            uc.execute(
                 "INSERT INTO employees (employee_id, name, email) VALUES (?, ?, ?)",
                 [employee_id, proposal["new_value"], proposal.get("email")],
             )
-            verified = connection.execute(
-                "SELECT employee_id FROM employees WHERE employee_id = ?", [employee_id]
-            ).fetchone()[0]
+            verified = uc.fetchval("SELECT employee_id FROM employees WHERE employee_id = ?", [employee_id])
+        
         elif table == "employee_managers" and operation == "UPDATE":
             reporting_id = proposal["new_value"]
-            if not _employee_exists(connection, reporting_id):
+            if not _employee_exists(reporting_id):
                 raise ValueError(f"manager '{reporting_id}' was not found")
             if reporting_id == employee_id:
                 raise ValueError("an employee cannot report to themselves")
-            connection.execute("DELETE FROM employee_managers WHERE employee_id = ?", [employee_id])
-            connection.execute(
+            uc.execute("DELETE FROM employee_managers WHERE employee_id = ?", [employee_id])
+            uc.execute(
                 "INSERT INTO employee_managers (employee_id, reporting_id) VALUES (?, ?)",
                 [employee_id, reporting_id],
             )
-            verified = connection.execute(
-                "SELECT reporting_id FROM employee_managers WHERE employee_id = ? "
-                "AND reporting_id = ?", [employee_id, reporting_id]
-            ).fetchone()[0]
+            verified = uc.fetchval(
+                "SELECT reporting_id FROM employee_managers WHERE employee_id = ? AND reporting_id = ?",
+                [employee_id, reporting_id],
+            )
+        
         else:
             raise ValueError("unsupported write proposal")
-
-        _audit(connection, proposal, "SUCCESS")
-        connection.execute("COMMIT")
+        
+        _audit(proposal, "SUCCESS")
         return {"status": "SUCCESS", "proposal": proposal, "verified_value": verified}
+    
     except Exception as exc:
-        connection.execute("ROLLBACK")
-        try:
-            connection.execute("BEGIN")
-            _audit(connection, proposal, "ERROR", str(exc))
-            connection.execute("COMMIT")
-        except Exception:
-            connection.execute("ROLLBACK")
+        _audit(proposal, "ERROR", str(exc))
         raise
-    finally:
-        connection.close()
 
 
 def execute_proposals(proposals: list[dict]) -> list[dict]:
-    if not proposals or any(not proposal.get("requires_confirmation") for proposal in proposals):
+    """Execute multiple proposals sequentially via Unity Catalog."""
+    if not proposals or any(not p.get("requires_confirmation") for p in proposals):
         raise ValueError("all write proposals require confirmation")
-    connection = _write_con()
+    
     results = []
-    try:
-        connection.execute("BEGIN")
-        for proposal in proposals:
-            employee_id = proposal["employee_id"]
-            if proposal["table"] == "employees" and proposal["operation"] == "UPDATE":
-                field = proposal["field"]
-                if field not in set(MANAGEMENT_FIELDS.values()):
-                    raise ValueError("field is not allowed")
-                value = _validate_employee_value(field, proposal["new_value"])
-                connection.execute(f"UPDATE employees SET {field} = ? WHERE employee_id = ?", [value, employee_id])
-                verified = connection.execute(f"SELECT {field} FROM employees WHERE employee_id = ?", [employee_id]).fetchone()[0]
-            elif proposal["table"] == "employee_managers" and proposal["operation"] == "UPDATE":
-                reporting_id = proposal["new_value"]
-                if not _employee_exists(connection, reporting_id) or reporting_id == employee_id:
-                    raise ValueError("invalid reporting manager")
-                connection.execute("DELETE FROM employee_managers WHERE employee_id = ?", [employee_id])
-                connection.execute("INSERT INTO employee_managers (employee_id, reporting_id) VALUES (?, ?)", [employee_id, reporting_id])
-                verified = reporting_id
-            elif proposal["table"] == "employee_skills" and proposal["operation"] == "INSERT":
-                connection.execute("INSERT INTO employee_skills (employee_id, skill, category, qualifier, source) VALUES (?, ?, ?, ?, ?)",
-                                   [employee_id, proposal["new_value"], proposal.get("category", "Other"), proposal.get("qualifier"), "data_management"])
-                verified = proposal["new_value"]
-            elif proposal["table"] == "employee_skills" and proposal["operation"] == "DELETE":
-                connection.execute("DELETE FROM employee_skills WHERE employee_id = ? AND lower(skill) = lower(?)",
-                                   [employee_id, proposal["old_value"]])
-                verified = connection.execute("SELECT COUNT(*) FROM employee_skills WHERE employee_id = ? AND lower(skill) = lower(?)",
-                                              [employee_id, proposal["old_value"]]).fetchone()[0]
-                if verified:
-                    raise ValueError("skill could not be deleted")
-            elif proposal["table"] == "employee_certifications" and proposal["operation"] == "INSERT":
-                connection.execute("INSERT INTO employee_certifications (employee_id, certification, vendor, source, verified, raw_text) VALUES (?, ?, ?, ?, ?, ?)",
-                                   [employee_id, proposal["new_value"], proposal.get("vendor"), "data_management", proposal.get("verified", "false"), proposal["new_value"]])
-                verified = proposal["new_value"]
-            elif proposal["table"] == "employee_projects" and proposal["operation"] == "INSERT":
-                connection.execute("INSERT INTO employee_projects (employee_id, project, client, technologies, role, project_type) VALUES (?, ?, ?, ?, ?, ?)",
-                                   [employee_id, proposal["new_value"], proposal.get("client"), proposal.get("technologies"), proposal.get("role"), proposal.get("project_type", "main")])
-                verified = proposal["new_value"]
-            elif proposal["table"] == "employee_projects" and proposal["operation"] == "DELETE":
-                connection.execute("DELETE FROM employee_projects WHERE employee_id = ? AND lower(project) = lower(?)",
-                                   [employee_id, proposal["old_value"]])
-                verified = connection.execute("SELECT COUNT(*) FROM employee_projects WHERE employee_id = ? AND lower(project) = lower(?)",
-                                              [employee_id, proposal["old_value"]]).fetchone()[0]
-                if verified:
-                    raise ValueError("project assignment could not be deleted")
-            elif proposal["table"] == "employee_projects" and proposal["operation"] == "MOVE":
-                connection.execute("DELETE FROM employee_projects WHERE employee_id = ? AND lower(project) = lower(?)",
-                                   [employee_id, proposal["old_value"]])
-                connection.execute("INSERT INTO employee_projects (employee_id, project, client, technologies, role, project_type) VALUES (?, ?, ?, ?, ?, ?)",
-                                   [employee_id, proposal["new_value"], proposal.get("client"), proposal.get("technologies"), proposal.get("role"), proposal.get("project_type", "main")])
-                verified = proposal["new_value"]
-            elif proposal["table"] == "employee_projects" and proposal["operation"] == "UPDATE":
-                if proposal.get("field") not in ("role", "technologies"):
-                    raise ValueError("project field is not allowed")
-                connection.execute(
-                    f"UPDATE employee_projects SET {proposal['field']} = ? "
-                    "WHERE employee_id = ? AND lower(project) = lower(?)",
-                    [proposal["new_value"], employee_id, proposal["project"]],
-                )
-                verified = proposal["new_value"]
-            elif proposal["table"] == "employees" and proposal["operation"] == "INSERT":
-                connection.execute("INSERT INTO employees (employee_id, name, email) VALUES (?, ?, ?)",
-                                   [employee_id, proposal["new_value"], proposal.get("email")])
-                verified = employee_id
-            else:
-                raise ValueError(f"unsupported batch proposal: {proposal['table']} {proposal['operation']}")
-            _audit(connection, proposal, "SUCCESS")
-            results.append({"status": "SUCCESS", "proposal": proposal, "verified_value": verified})
-        connection.execute("COMMIT")
-        return results
-    except Exception as exc:
-        connection.execute("ROLLBACK")
-        for proposal in proposals:
-            try:
-                connection.execute("BEGIN")
-                _audit(connection, proposal, "ERROR", str(exc))
-                connection.execute("COMMIT")
-            except Exception:
-                connection.execute("ROLLBACK")
-        raise
-    finally:
-        connection.close()
+    for proposal in proposals:
+        result = execute_proposal(proposal)
+        results.append(result)
+    return results
 
 
 # ------------------------------------------------------------- resolution

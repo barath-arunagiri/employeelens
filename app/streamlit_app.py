@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from src.config import (APP_NAME, CLEAN_DIR, DATA_MANAGEMENT_ENABLED, DATA_MANAGEMENT_PIN, 
-                        DB_PATH, DATABRICKS_MODEL, REPORTS_DIR)  # noqa: E402
+                        DATABRICKS_MODEL, REPORTS_DIR)  # noqa: E402
 from src.database import repository as repo                                       # noqa: E402
 
 st.set_page_config(page_title=APP_NAME, page_icon="🔎", layout="wide")
@@ -206,47 +206,25 @@ def fatal(message: str) -> None:
     st.stop()
 
 
-# Load DuckDB cache from Unity Catalog Delta tables (source of truth)
-# Unity Catalog tables at workspace.employeelens.* are the source of truth.
-# DuckDB is a fast read-only cache rebuilt from Delta on each startup.
+# Unity Catalog is the single source of truth.
+# No DuckDB, no CSV, no caching — all queries go directly to Delta tables.
 
 delta_sync_succeeded = False
 
 try:
-    # Use new Unity Catalog reader
-    from src.database import delta_reader
-    
-    if delta_reader.is_available():
-        print("Loading data from Unity Catalog Delta tables...")
-        delta_reader.load_from_delta_to_csv(str(CLEAN_DIR))
-        
-        # Rebuild DuckDB from the fresh Delta data
-        if DB_PATH.exists():
-            DB_PATH.unlink()
-        
-        from src.ingestion.load_duckdb import main as _build_db
-        _build_db()
-        
+    from src.database import uc_connection
+    if uc_connection.is_available():
+        print("✅ Connected to Unity Catalog (workspace.employeelens)")
         delta_sync_succeeded = True
-        print("✅ Successfully loaded data from Unity Catalog")
     else:
-        print("Unity Catalog reader not available, using CSV files")
-        
+        print("⚠️  Unity Catalog not available")
 except Exception as e:
-    import warnings
-    warnings.warn(f"Unity Catalog load failed, using CSV files: {e}")
-    delta_sync_succeeded = False
-
-# Ensure DuckDB exists (either from Delta or from CSV)
-if not DB_PATH.exists():
-    from src.ingestion.load_duckdb import main as _build_db
-    _build_db()
+    print(f"⚠️  Unity Catalog connection failed: {e}")
 
 try:
-    repo.ensure_management_schema()
     STATS = repo.dataset_stats()
-except Exception as exc:                                        # noqa: BLE001
-    fatal(f"Could not read the database: {exc}")
+except Exception as exc:
+    fatal(f"Could not read from Unity Catalog: {exc}")
 
 
 @st.cache_resource(show_spinner=False)
@@ -315,8 +293,8 @@ with st.sidebar:
             st.dataframe(pd.read_csv(issues_path), hide_index=True, use_container_width=True)
 
     st.divider()
-    st.caption("Management fields added through the UI are stored in DuckDB and are "
-               "not written back to the source spreadsheets.")
+    st.caption("All data is stored in Unity Catalog (workspace.employeelens) "
+               "and persists across app restarts.")
 
 
 # -------------------------------------------------------------------- tabs
