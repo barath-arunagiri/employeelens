@@ -155,20 +155,20 @@ def propose_add_certification(employee_id: str, certification: str,
 def propose_add_project(employee_id: str, project: str, client: str = "",
                         technologies: str = "", role: str = "",
                         project_type: str = "main") -> dict:
-        if not _employee_exists(employee_id):
-            raise ValueError(f"employee '{employee_id}' was not found")
+    if not _employee_exists(employee_id):
+        raise ValueError(f"employee '{employee_id}' was not found")
         project = _validate_employee_value("project", project)
         norm_type = (project_type or "main").strip().lower()
-        if norm_type not in {"main", "support"}:
-            raise ValueError("project_type must be 'main' or 'support'")
+    if norm_type not in {"main", "support"}:
+        raise ValueError("project_type must be 'main' or 'support'")
         duplicate = uc.fetchone(
         "SELECT 1 FROM employee_projects WHERE employee_id = ? AND lower(project) = lower(?) "
             "AND lower(COALESCE(project_type, 'main')) = lower(?)",
             [employee_id, project, norm_type],
         ).fetchone()
-        if duplicate:
-            raise ValueError(f"project '{project}' already exists for {employee_id}")
-        return {
+    if duplicate:
+        raise ValueError(f"project '{project}' already exists for {employee_id}")
+    return {
             "operation": "INSERT", "table": "employee_projects", "employee_id": employee_id,
             "field": "project", "old_value": None, "new_value": project,
             "client": client.strip() or None, "technologies": technologies.strip() or None,
@@ -178,47 +178,47 @@ def propose_add_project(employee_id: str, project: str, client: str = "",
 
 
 def propose_remove_project(employee_id: str, project: str) -> dict:
-        if not _employee_exists(employee_id):
-            raise ValueError(f"employee '{employee_id}' was not found")
+    if not _employee_exists(employee_id):
+        raise ValueError(f"employee '{employee_id}' was not found")
     row = uc.fetchone(
-            "SELECT project FROM employee_projects WHERE employee_id = ? "
-            "AND lower(project) = lower(?) LIMIT 1",
-            [employee_id, project.strip()]
-        )
-        if row is None:
-            raise ValueError(f"project '{project}' was not found for {employee_id}")
-        return {
-            "operation": "DELETE", "table": "employee_projects", "employee_id": employee_id,
-            "field": "project", "old_value": row[0], "new_value": None,
-            "requires_confirmation": True,
-        }
+        "SELECT project FROM employee_projects WHERE employee_id = ? "
+        "AND lower(project) = lower(?) LIMIT 1",
+        [employee_id, project.strip()]
+    )
+    if row is None:
+        raise ValueError(f"project '{project}' was not found for {employee_id}")
+    return {
+        "operation": "DELETE", "table": "employee_projects", "employee_id": employee_id,
+        "field": "project", "old_value": row[0], "new_value": None,
+        "requires_confirmation": True,
+    }
 
 
 def propose_move_project(employee_id: str, from_project: str, to_project: str,
                          client: str = "", technologies: str = "", role: str = "",
                          project_type: str | None = None) -> dict:
-        if not _employee_exists(employee_id):
-            raise ValueError(f"employee '{employee_id}' was not found")
-        old = uc.fetchone(
-            "SELECT project, client, technologies, role, COALESCE(project_type, 'main') FROM employee_projects "
+    if not _employee_exists(employee_id):
+        raise ValueError(f"employee '{employee_id}' was not found")
+    old = uc.fetchone(
+        "SELECT project, client, technologies, role, COALESCE(project_type, 'main') FROM employee_projects "
             "WHERE employee_id = ? AND lower(project) = lower(?) LIMIT 1",
             [employee_id, from_project.strip()],
         )
-        if old is None:
-            raise ValueError(f"project '{from_project}' was not found for {employee_id}")
+    if old is None:
+        raise ValueError(f"project '{from_project}' was not found for {employee_id}")
         to_project = _validate_employee_value("to_project", to_project)
         # preserve the project's existing type unless the caller explicitly
         # asks to change it — same fallback pattern as client/technologies/role
         norm_type = (project_type or old[4] or "main").strip().lower()
-        if norm_type not in {"main", "support"}:
-            raise ValueError("project_type must be 'main' or 'support'")
-        if uc.fetchone(
-            "SELECT 1 FROM employee_projects WHERE employee_id = ? AND lower(project) = lower(?) "
+    if norm_type not in {"main", "support"}:
+        raise ValueError("project_type must be 'main' or 'support'")
+    if uc.fetchone(
+        "SELECT 1 FROM employee_projects WHERE employee_id = ? AND lower(project) = lower(?) "
             "AND lower(COALESCE(project_type, 'main')) = lower(?)",
             [employee_id, to_project.strip(), norm_type],
         ).fetchone():
             raise ValueError(f"project '{to_project}' already exists for {employee_id}")
-        return {
+    return {
             "operation": "MOVE", "table": "employee_projects", "employee_id": employee_id,
             "field": "project", "old_value": old[0], "new_value": to_project.strip(),
             "client": client.strip() or old[1], "technologies": technologies.strip() or old[2],
@@ -228,34 +228,34 @@ def propose_move_project(employee_id: str, from_project: str, to_project: str,
 
 
 def propose_create_employee(employee_id: str, name: str, email: str = "") -> dict:
-        employee_id = _validate_employee_value("employee_id", employee_id)
-        name = _validate_employee_value("name", name)
-        if email:
-            email = _validate_employee_value("email", email)
-            if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
-                raise ValueError("email is not valid")
-        if uc.fetchone("SELECT 1 FROM employees WHERE employee_id = ?",
-            [employee_id]
-        ):
-            raise ValueError(f"employee '{employee_id}' already exists")
-        return {
-            "operation": "INSERT", "table": "employees", "employee_id": employee_id,
-            "field": "employee", "old_value": None, "new_value": name,
-            "email": email or None, "requires_confirmation": True,
-        }
+    employee_id = _validate_employee_value("employee_id", employee_id)
+    name = _validate_employee_value("name", name)
+    if email:
+        email = _validate_employee_value("email", email)
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+            raise ValueError("email is not valid")
+    if uc.fetchone("SELECT 1 FROM employees WHERE employee_id = ?",
+        [employee_id]
+    ):
+        raise ValueError(f"employee '{employee_id}' already exists")
+    return {
+        "operation": "INSERT", "table": "employees", "employee_id": employee_id,
+        "field": "employee", "old_value": None, "new_value": name,
+        "email": email or None, "requires_confirmation": True,
+    }
 
 
 def propose_delete_certification(employee_id: str, certification: str) -> dict:
-        if not _employee_exists(employee_id):
-            raise ValueError(f"employee '{employee_id}' was not found")
-        row = uc.fetchone(
+    if not _employee_exists(employee_id):
+        raise ValueError(f"employee '{employee_id}' was not found")
+    row = uc.fetchone(
         "SELECT certification FROM employee_certifications "
             "WHERE employee_id = ? AND lower(certification) = lower(?) LIMIT 1",
             [employee_id, certification.strip()],
         ).fetchone()
-        if row is None:
-            raise ValueError(f"certification '{certification}' was not found for {employee_id}")
-        return {
+    if row is None:
+        raise ValueError(f"certification '{certification}' was not found for {employee_id}")
+    return {
             "operation": "DELETE", "table": "employee_certifications", "employee_id": employee_id,
             "field": "certification", "old_value": row[0], "new_value": None,
             "requires_confirmation": True,
@@ -263,17 +263,17 @@ def propose_delete_certification(employee_id: str, certification: str) -> dict:
 
 
 def propose_update_project_role(employee_id: str, project: str, role: str) -> dict:
-        if not _employee_exists(employee_id):
-            raise ValueError(f"employee '{employee_id}' was not found")
+    if not _employee_exists(employee_id):
+        raise ValueError(f"employee '{employee_id}' was not found")
     row = uc.fetchone(
-            "SELECT role FROM employee_projects WHERE employee_id = ? "
+        "SELECT role FROM employee_projects WHERE employee_id = ? "
             "AND lower(project) = lower(?) LIMIT 1",
             [employee_id, project.strip()]
         )
-        if row is None:
-            raise ValueError(f"project '{project}' was not found for {employee_id}")
-        role = _validate_employee_value("role", role)
-        return {
+    if row is None:
+        raise ValueError(f"project '{project}' was not found for {employee_id}")
+    role = _validate_employee_value("role", role)
+    return {
             "operation": "UPDATE", "table": "employee_projects", "employee_id": employee_id,
             "project": project.strip(), "field": "role", "old_value": row[0],
             "new_value": role, "requires_confirmation": True,
@@ -282,16 +282,16 @@ def propose_update_project_role(employee_id: str, project: str, role: str) -> di
 
 def propose_update_project_technologies(employee_id: str, project: str,
                                         technologies: str) -> dict:
-        if not _employee_exists(employee_id):
-            raise ValueError(f"employee '{employee_id}' was not found")
-        row = uc.fetchone(
+    if not _employee_exists(employee_id):
+        raise ValueError(f"employee '{employee_id}' was not found")
+    row = uc.fetchone(
         "SELECT technologies FROM employee_projects WHERE employee_id = ? "
             "AND lower(project) = lower(?) LIMIT 1",
         [employee_id, project.strip()]
     )
-        if row is None:
-            raise ValueError(f"project '{project}' was not found for {employee_id}")
-        return {
+    if row is None:
+        raise ValueError(f"project '{project}' was not found for {employee_id}")
+    return {
             "operation": "UPDATE", "table": "employee_projects", "employee_id": employee_id,
             "project": project.strip(), "field": "technologies", "old_value": row[0],
             "new_value": _validate_employee_value("technologies", technologies),
@@ -300,42 +300,42 @@ def propose_update_project_technologies(employee_id: str, project: str,
 
 
 def propose_update_manager(employee_id: str, manager: str) -> dict:
-        if not _employee_exists(employee_id):
-            raise ValueError(f"employee '{employee_id}' was not found")
-        managers = uc.fetchone(
+    if not _employee_exists(employee_id):
+        raise ValueError(f"employee '{employee_id}' was not found")
+    managers = uc.query(
         "SELECT employee_id, name FROM employees "
-            "WHERE employee_id = ? OR lower(name) LIKE '%' || lower(?) || '%' "
-            "ORDER BY name",
+        "WHERE employee_id = ? OR lower(name) LIKE '%' || lower(?) || '%' "
+        "ORDER BY name",
         [manager.strip(), manager.strip()]
     ).values.tolist()
-        if not managers:
-            raise ValueError(f"manager '{manager}' was not found")
-        if len(managers) > 1:
-            choices = ", ".join(f"{name} ({reporting_id})" for reporting_id, name in managers)
-            raise ValueError(f"manager name is ambiguous: {choices}")
-        reporting_id, manager_name = managers[0]
-        if reporting_id == employee_id:
-            raise ValueError("an employee cannot report to themselves")
+    if not managers:
+        raise ValueError(f"manager '{manager}' was not found")
+    if len(managers) > 1:
+        choices = ", ".join(f"{name} ({reporting_id})" for reporting_id, name in managers)
+        raise ValueError(f"manager name is ambiguous: {choices}")
+    reporting_id, manager_name = managers[0]
+    if reporting_id == employee_id:
+        raise ValueError("an employee cannot report to themselves")
     current = uc.fetchone(
-            "SELECT m.reporting_id, e.name FROM employee_managers m "
-            "JOIN employees e ON e.employee_id = m.reporting_id "
-            "WHERE m.employee_id = ? ORDER BY e.name LIMIT 1",
-            [employee_id]
-        )
-        return {
-            "operation": "UPDATE", "table": "employee_managers", "employee_id": employee_id,
-            "field": "reporting_id", "old_value": current[0] if current else None,
-            "old_manager_name": current[1] if current else None,
-            "new_value": reporting_id, "new_manager_name": manager_name,
-            "requires_confirmation": True,
-        }
+        "SELECT m.reporting_id, e.name FROM employee_managers m "
+        "JOIN employees e ON e.employee_id = m.reporting_id "
+        "WHERE m.employee_id = ? ORDER BY e.name LIMIT 1",
+        [employee_id]
+    )
+    return {
+        "operation": "UPDATE", "table": "employee_managers", "employee_id": employee_id,
+        "field": "reporting_id", "old_value": current[0] if current else None,
+        "old_manager_name": current[1] if current else None,
+        "new_value": reporting_id, "new_manager_name": manager_name,
+        "requires_confirmation": True,
+    }
 
 
 def _audit(proposal: dict, status: str, error_message: str | None = None) -> None:
     """Write audit entry to Unity Catalog."""
     uc.write_audit(
         operation=proposal.get("operation", ""),
-        employee_id=proposal.get("employee_id", ""),
+    employee_id=proposal.get("employee_id", ""),
         table_name=proposal.get("table", ""),
         field_name=proposal.get("field"),
         old_value=proposal.get("old_value"),
