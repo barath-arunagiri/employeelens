@@ -6,4 +6,4 @@ python-dotenv>=1.0
 databricks-openai>=0.1.0   # OpenAI-compatible client for Databricks Foundation Model APIs
 databricks-sdk>=0.30.0
 databricks-sql-connector>=3.0.0  # SQL Warehouse connection for Delta sync
-# Force rebuild - clear Python bytecode cache
+# Force rebuild - clear Python bytecode cache (v2)
