@@ -285,7 +285,7 @@ with st.sidebar:
     cols = st.columns(2)
     cols[0].metric("Distinct skills", STATS["skills"])
     if STATS["certifications_unconfirmed"]:
-        cols[1].metric("Certs confirmed", STATS["certifications_confirmed"],
+        cols[1].metric("Certifications", STATS["certifications_confirmed"],
                        delta=f"{STATS['certifications_unconfirmed']} unconfirmed",
                        delta_color="off")
     else:
