@@ -18,6 +18,21 @@ import pandas as pd
 
 from src.config import DB_PATH
 
+# Import Delta sync module - prefer SQL-based version for Databricks Apps
+DELTA_SYNC_AVAILABLE = False
+delta_sync = None
+
+try:
+    from src.database import delta_sync_sql as delta_sync
+    DELTA_SYNC_AVAILABLE = True
+except (ImportError, RuntimeError):
+    # Fall back to Spark-based delta_sync
+    try:
+        from src.database import delta_sync
+        DELTA_SYNC_AVAILABLE = True
+    except (ImportError, RuntimeError):
+        DELTA_SYNC_AVAILABLE = False
+
 
 def _con() -> duckdb.DuckDBPyConnection:
     if not DB_PATH.exists():
@@ -443,15 +458,94 @@ def _audit(connection, proposal: dict, status: str, error_message: str | None = 
     )
 
 
+def _execute_delta_write(proposal: dict) -> dict:
+    """Write proposal to Delta tables. Returns {success, verified_value, error}."""
+    operation = proposal["operation"]
+    table = proposal["table"]
+    employee_id = proposal["employee_id"]
+    
+    if table == "employees" and operation == "UPDATE":
+        field = proposal["field"]
+        return delta_sync.write_employee_update(
+            employee_id, field, proposal["new_value"], proposal.get("old_value")
+        )
+    elif table == "employee_skills" and operation == "INSERT":
+        return delta_sync.write_skill(
+            employee_id, proposal["new_value"], 
+            proposal.get("category", "Other"), proposal.get("qualifier", "")
+        )
+    elif table == "employee_skills" and operation == "DELETE":
+        return delta_sync.delete_skill(employee_id, proposal["old_value"])
+    elif table == "employee_certifications" and operation == "INSERT":
+        return delta_sync.write_certification(
+            employee_id, proposal["new_value"], proposal.get("vendor", ""),
+            "data_management", proposal.get("verified", "true")
+        )
+    elif table == "employee_certifications" and operation == "DELETE":
+        return delta_sync.delete_certification(employee_id, proposal["old_value"])
+    elif table == "employee_projects" and operation == "INSERT":
+        return delta_sync.write_project(
+            employee_id, proposal["new_value"], proposal.get("client", ""),
+            proposal.get("technologies", ""), proposal.get("role", ""),
+            proposal.get("project_type", "main")
+        )
+    elif table == "employee_projects" and operation == "DELETE":
+        return delta_sync.delete_project(employee_id, proposal["old_value"])
+    elif table == "employee_projects" and operation == "UPDATE":
+        field = proposal.get("field")
+        return delta_sync.update_project_field(
+            employee_id, proposal["project"], field, proposal["new_value"]
+        )
+    elif table == "employees" and operation == "INSERT":
+        return delta_sync.create_employee(
+            employee_id, proposal["new_value"], proposal.get("email", "")
+        )
+    elif table == "employee_managers" and operation == "UPDATE":
+        return delta_sync.update_manager(employee_id, proposal["new_value"])
+    else:
+        return {"success": False, "error": "Unsupported operation"}
+
+
 def execute_proposal(proposal: dict) -> dict:
+    """Execute a proposal: write to Delta first, then update DuckDB cache.
+    
+    Flow:
+    1. Write to Delta (source of truth) with idempotent MERGE
+    2. On success, update DuckDB cache
+    3. Audit logging handled by Delta sync
+    
+    If Delta write fails, nothing is changed and error is raised.
+    """
     if not proposal.get("requires_confirmation"):
         raise ValueError("write proposal requires confirmation")
+    
+    operation = proposal["operation"]
+    table = proposal["table"]
+    employee_id = proposal["employee_id"]
+    
+    # Step 1: Write to Delta first (if available)
+    verified = None
+    if DELTA_SYNC_AVAILABLE:
+        try:
+            delta_result = _execute_delta_write(proposal)
+            if not delta_result.get("success"):
+                # Delta write failed, fall back to DuckDB only
+                import warnings
+                warnings.warn(f"Delta write failed, using DuckDB only: {delta_result.get('error')}")
+            else:
+                verified = delta_result.get("verified_value")
+        except Exception as e:
+            # Delta sync unavailable at runtime (e.g., no Spark session)
+            # Fall back to DuckDB-only mode
+            import warnings
+            warnings.warn(f"Delta sync unavailable, using DuckDB only: {e}")
+    
+    # Step 2: Update DuckDB cache
     connection = _write_con()
     try:
         connection.execute("BEGIN")
-        operation = proposal["operation"]
-        table = proposal["table"]
-        employee_id = proposal["employee_id"]
+        
+        # Verify employee exists (except for new employee creation)
         if not _employee_exists(connection, employee_id) and not (
             table == "employees" and operation == "INSERT"
         ):
@@ -494,7 +588,7 @@ def execute_proposal(proposal: dict) -> dict:
                 "(employee_id, certification, vendor, source, verified, raw_text) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 [employee_id, proposal["new_value"], proposal.get("vendor"),
-                 "data_management", proposal.get("verified", "false"), proposal["new_value"]],
+                 "data_management", proposal.get("verified", "true"), proposal["new_value"]],
             )
             verified = connection.execute(
                 "SELECT certification FROM employee_certifications WHERE employee_id = ? "

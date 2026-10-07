@@ -18,8 +18,8 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from src.config import (APP_NAME, DATA_MANAGEMENT_ENABLED, DATA_MANAGEMENT_PIN, DB_PATH,
-                        DATABRICKS_MODEL, REPORTS_DIR)  # noqa: E402
+from src.config import (APP_NAME, CLEAN_DIR, DATA_MANAGEMENT_ENABLED, DATA_MANAGEMENT_PIN, 
+                        DB_PATH, DATABRICKS_MODEL, REPORTS_DIR)  # noqa: E402
 from src.database import repository as repo                                       # noqa: E402
 
 st.set_page_config(page_title=APP_NAME, page_icon="🔎", layout="wide")
@@ -206,10 +206,48 @@ def fatal(message: str) -> None:
     st.stop()
 
 
-# Build the DuckDB database from clean CSVs on first launch.
-if not DB_PATH.exists():
-    from src.ingestion.load_duckdb import main as _build_db
-    _build_db()
+# Load DuckDB cache from Delta tables (source of truth)
+# Delta tables at workspace.employeelens.* are the single source of truth.
+# DuckDB is just a fast read-only cache.
+# Uses SQL Warehouse connection in Databricks Apps.
+DELTA_SYNC_AVAILABLE = False
+delta_sync = None
+
+try:
+    from src.database import delta_sync_sql as delta_sync
+    DELTA_SYNC_AVAILABLE = True
+except (ImportError, RuntimeError):
+    # Fall back to Spark-based if needed
+    try:
+        from src.database import delta_sync
+        DELTA_SYNC_AVAILABLE = True
+    except (ImportError, RuntimeError):
+        DELTA_SYNC_AVAILABLE = False
+
+delta_sync_succeeded = False
+
+if DELTA_SYNC_AVAILABLE:
+    # Try to load from Delta on startup
+    try:
+        delta_sync.load_from_delta_to_csv(str(CLEAN_DIR))
+        # Rebuild DuckDB from the refreshed CSVs
+        if DB_PATH.exists():
+            DB_PATH.unlink()  # Remove old cache
+        from src.ingestion.load_duckdb import main as _build_db
+        _build_db()
+        delta_sync_succeeded = True
+    except Exception as e:
+        # Delta sync failed (likely no Spark in Databricks Apps environment)
+        # Fall back to building from existing CSV files
+        import warnings
+        warnings.warn(f"Delta sync unavailable, using CSV files: {e}")
+        delta_sync_succeeded = False
+
+# Fallback: build DuckDB from CSV if Delta sync failed or unavailable
+if not delta_sync_succeeded:
+    if not DB_PATH.exists():
+        from src.ingestion.load_duckdb import main as _build_db
+        _build_db()
 
 try:
     repo.ensure_management_schema()
@@ -260,6 +298,21 @@ with st.sidebar:
 
     st.divider()
     st.caption(f"Model: `{BACKEND_LABEL}`")
+    
+    # Show data persistence mode
+    if delta_sync_succeeded:
+        st.caption("💾 Data: Delta Lake (Unity Catalog)")
+    else:
+        st.caption("💾 Data: DuckDB cache (CSV fallback)")
+    
+    # Debug mode toggle (off by default)
+    if "debug_mode" not in st.session_state:
+        st.session_state.debug_mode = False
+    st.session_state.debug_mode = st.checkbox(
+        "Show tool trace", 
+        value=st.session_state.debug_mode,
+        help="Show 'How this was answered' debug info under responses"
+    )
 
     # Suspect certifications check removed - all certifications shown without verification status
 
@@ -297,7 +350,8 @@ with ask_tab:
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
-            if message.get("trace"):
+            # Show trace only if debug mode is enabled
+            if message.get("trace") and st.session_state.get("debug_mode", False):
                 with st.expander(f"How this was answered — {len(message['trace'])} tool call(s)"):
                     for step in message["trace"]:
                         st.markdown(f"**`{step['tool']}`** → {step['row_count']} row(s)")
@@ -311,11 +365,11 @@ with ask_tab:
     input_col1, input_col2 = st.columns([6, 1])
     with input_col2:
         if st.session_state.input_mode == "quick":
-            if st.button("📝 Detailed", help="Switch to multiline input mode", use_container_width=True):
+            if st.button("📝 Multiline", help="Switch to multiline input mode (Shift+Enter for newlines)", use_container_width=True):
                 st.session_state.input_mode = "detailed"
                 st.rerun()
         else:
-            if st.button("💬 Quick", help="Switch to quick chat mode", use_container_width=True):
+            if st.button("💬 Quick", help="Switch to single-line chat mode (Enter to send)", use_container_width=True):
                 st.session_state.input_mode = "quick"
                 st.rerun()
 
@@ -330,17 +384,21 @@ with ask_tab:
     else:
         with input_col1:
             detailed_query = st.text_area(
-                "Detailed query (multiline supported)",
+                "Multiline query (press Enter for newlines, click Send to submit)",
                 placeholder="I need to find employees who:\n1. Have Python and Azure skills\n2. Work on active projects\n3. Have Databricks certifications\n\nAnd show me their project history.",
                 height=150,
                 key="detailed_query_input",
                 label_visibility="collapsed"
             )
-            if st.button("🚀 Send", type="primary", key="send_detailed"):
-                if detailed_query.strip():
-                    prompt = detailed_query
-                else:
-                    st.warning("Please enter a query first.")
+            send_col1, send_col2 = st.columns([1, 5])
+            with send_col1:
+                if st.button("🚀 Send", type="primary", key="send_detailed", use_container_width=True):
+                    if detailed_query.strip():
+                        prompt = detailed_query
+                    else:
+                        st.warning("Please enter a query first.")
+            with send_col2:
+                st.caption("💡 Tip: Full multiline text is sent as-is, preserving all formatting.")
         
         # Suggestion buttons still work in detailed mode
         prompt = prompt or st.session_state.pop("pending", None)
@@ -360,7 +418,8 @@ with ask_tab:
                 except Exception as exc:                        # noqa: BLE001
                     answer, trace = f"Something went wrong: `{exc}`", []
             st.markdown(answer)
-            if trace:
+            # Show trace only if debug mode is enabled
+            if trace and st.session_state.get("debug_mode", False):
                 with st.expander(f"How this was answered — {len(trace)} tool call(s)"):
                     for step in trace:
                         st.markdown(f"**`{step['tool']}`** → {step['row_count']} row(s)")

@@ -119,20 +119,38 @@ def _extract_content_text(content) -> str:
     rather than a plain string.  This helper normalises both the classic
     string format and the structured-blocks format so the rest of the
     agent can always treat the answer as ``str``.
+    
+    Also strips raw tool-call syntax and chat template artifacts that may
+    leak from fallback models.
     """
+    import re
+    
     if content is None:
         return ""
     if isinstance(content, str):
-        return content
-    if isinstance(content, list):
+        text = content
+    elif isinstance(content, list):
         parts: list[str] = []
         for block in content:
             if isinstance(block, dict) and block.get("type") == "text":
                 parts.append(block.get("text", ""))
             elif isinstance(block, str):
                 parts.append(block)
-        return "\n".join(parts)
-    return str(content)
+        text = "\n".join(parts)
+    else:
+        text = str(content)
+    
+    # Strip raw function call syntax (e.g. "search_employees(name='John')")
+    # Pattern: function_name(...) at start/end of line
+    text = re.sub(r'^\s*\w+\([^)]*\)\s*$', '', text, flags=re.MULTILINE)
+    
+    # Strip chat template artifacts (e.g. <|assistant|>, <|endoftext|>)
+    text = re.sub(r'<\|[^|]+\|>', '', text)
+    
+    # Strip trailing/leading whitespace and empty lines
+    text = '\n'.join(line for line in text.split('\n') if line.strip())
+    
+    return text.strip()
 
 
 def _openai_tools(tools: list[dict] = TOOLS) -> list[dict]:
