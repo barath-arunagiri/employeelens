@@ -1,7 +1,7 @@
-"""Delta Lake synchronization using SQL Warehouse.
+"""Delta Lake synchronization using Databricks SDK SQL Execution.
 
 Works in Databricks Apps environment where Spark sessions aren't available.
-Uses Databricks SQL Connector for all Delta operations.
+Uses Databricks SDK's statement execution API for all Delta operations.
 """
 from __future__ import annotations
 
@@ -10,10 +10,11 @@ import csv
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
+import time
 
 try:
-    from databricks import sql
     from databricks.sdk import WorkspaceClient
+    from databricks.sdk.service.sql import StatementState
     SQL_AVAILABLE = True
 except ImportError:
     SQL_AVAILABLE = False
@@ -54,11 +55,29 @@ def _get_connection():
     if not SQL_AVAILABLE:
         raise RuntimeError("databricks-sql-connector not available")
     
-    # In Databricks Apps, connection uses OAuth from the app context
+    # In Databricks Apps, use WorkspaceClient which handles auth automatically
+    from databricks.sdk import WorkspaceClient
+    from databricks.sdk.core import Config
+    
+    w = WorkspaceClient()
+    cfg: Config = w.config
+    
+    # Get the workspace hostname from SDK config
+    hostname = cfg.host
+    if not hostname:
+        raise RuntimeError("Cannot determine Databricks workspace hostname")
+    
+    # Remove https:// prefix if present
+    if hostname.startswith("https://"):
+        hostname = hostname[8:]
+    if hostname.startswith("http://"):
+        hostname = hostname[7:]
+    
+    # Use the token from the workspace client for SQL connection
     return sql.connect(
-        server_hostname=os.environ.get("DATABRICKS_SERVER_HOSTNAME", ""),
+        server_hostname=hostname,
         http_path=f"/sql/1.0/warehouses/{_get_sql_warehouse_id()}",
-        auth_type="databricks-oauth"
+        access_token=cfg.token().get("access_token")
     )
 
 

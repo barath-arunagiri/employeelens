@@ -237,17 +237,15 @@ if DELTA_SYNC_AVAILABLE:
         _build_db()
         delta_sync_succeeded = True
     except Exception as e:
-        # Delta sync failed (likely no Spark in Databricks Apps environment)
-        # Fall back to building from existing CSV files
+        # Delta sync failed - ensure DuckDB exists from CSV
         import warnings
-        warnings.warn(f"Delta sync unavailable, using CSV files: {e}")
+        warnings.warn(f"Delta sync unavailable, using DuckDB-only mode: {e}")
         delta_sync_succeeded = False
 
-# Fallback: build DuckDB from CSV if Delta sync failed or unavailable
-if not delta_sync_succeeded:
-    if not DB_PATH.exists():
-        from src.ingestion.load_duckdb import main as _build_db
-        _build_db()
+# Ensure DuckDB exists (either from Delta or from CSV)
+if not DB_PATH.exists():
+    from src.ingestion.load_duckdb import main as _build_db
+    _build_db()
 
 try:
     repo.ensure_management_schema()
