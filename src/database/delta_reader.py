@@ -43,7 +43,7 @@ def _execute_query(query: str) -> List[List]:
     response = w.statement_execution.execute_statement(
         warehouse_id=warehouse_id,
         statement=query,
-        wait_timeout="60s"
+        wait_timeout="50s"  # Max allowed by API
     )
     
     if response.status.state == StatementState.SUCCEEDED:
