@@ -206,41 +206,36 @@ def fatal(message: str) -> None:
     st.stop()
 
 
-# Load DuckDB cache from Delta tables (source of truth)
-# Delta tables at workspace.employeelens.* are the single source of truth.
-# DuckDB is just a fast read-only cache.
-# Uses SQL Warehouse connection in Databricks Apps.
-DELTA_SYNC_AVAILABLE = False
-delta_sync = None
-
-try:
-    from src.database import delta_sync_sql as delta_sync
-    DELTA_SYNC_AVAILABLE = True
-except (ImportError, RuntimeError):
-    # Fall back to Spark-based if needed
-    try:
-        from src.database import delta_sync
-        DELTA_SYNC_AVAILABLE = True
-    except (ImportError, RuntimeError):
-        DELTA_SYNC_AVAILABLE = False
+# Load DuckDB cache from Unity Catalog Delta tables (source of truth)
+# Unity Catalog tables at workspace.employeelens.* are the source of truth.
+# DuckDB is a fast read-only cache rebuilt from Delta on each startup.
 
 delta_sync_succeeded = False
 
-if DELTA_SYNC_AVAILABLE:
-    # Try to load from Delta on startup
-    try:
-        delta_sync.load_from_delta_to_csv(str(CLEAN_DIR))
-        # Rebuild DuckDB from the refreshed CSVs
+try:
+    # Use new Unity Catalog reader
+    from src.database import delta_reader
+    
+    if delta_reader.is_available():
+        print("Loading data from Unity Catalog Delta tables...")
+        delta_reader.load_from_delta_to_csv(str(CLEAN_DIR))
+        
+        # Rebuild DuckDB from the fresh Delta data
         if DB_PATH.exists():
-            DB_PATH.unlink()  # Remove old cache
+            DB_PATH.unlink()
+        
         from src.ingestion.load_duckdb import main as _build_db
         _build_db()
+        
         delta_sync_succeeded = True
-    except Exception as e:
-        # Delta sync failed - ensure DuckDB exists from CSV
-        import warnings
-        warnings.warn(f"Delta sync unavailable, using DuckDB-only mode: {e}")
-        delta_sync_succeeded = False
+        print("✅ Successfully loaded data from Unity Catalog")
+    else:
+        print("Unity Catalog reader not available, using CSV files")
+        
+except Exception as e:
+    import warnings
+    warnings.warn(f"Unity Catalog load failed, using CSV files: {e}")
+    delta_sync_succeeded = False
 
 # Ensure DuckDB exists (either from Delta or from CSV)
 if not DB_PATH.exists():
@@ -297,11 +292,11 @@ with st.sidebar:
     st.divider()
     st.caption(f"Model: `{BACKEND_LABEL}`")
     
-    # Show data persistence mode
+    # Show data source
     if delta_sync_succeeded:
-        st.caption("💾 Data: Delta Lake (Unity Catalog)")
+        st.caption("💾 Data: Unity Catalog (Delta Lake)")
     else:
-        st.caption("💾 Data: DuckDB cache (CSV fallback)")
+        st.caption("💾 Data: CSV files (local)")
     
     # Debug mode toggle (off by default)
     if "debug_mode" not in st.session_state:
