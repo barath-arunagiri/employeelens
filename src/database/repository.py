@@ -452,11 +452,11 @@ def execute_proposal(proposal: dict) -> dict:
                 "DELETE FROM employee_skills WHERE employee_id = ? AND lower(skill) = lower(?)",
                 [employee_id, proposal["old_value"]],
             )
-            count = uc.fetchval(
+            count = int(uc.fetchval(
                 "SELECT COUNT(*) FROM employee_skills WHERE employee_id = ? AND lower(skill) = lower(?)",
                 [employee_id, proposal["old_value"]],
-            )
-            if count and count != 0:
+            ) or 0)  # fetchval returns strings: "0" would be truthy and != 0
+            if count != 0:
                 raise ValueError("skill could not be deleted")
             verified = 0
         
@@ -482,12 +482,12 @@ def execute_proposal(proposal: dict) -> dict:
                 "AND lower(certification) = lower(?)",
                 [employee_id, proposal["old_value"]],
             )
-            count = uc.fetchval(
+            count = int(uc.fetchval(
                 "SELECT COUNT(*) FROM employee_certifications WHERE employee_id = ? "
                 "AND lower(certification) = lower(?)",
                 [employee_id, proposal["old_value"]],
-            )
-            if count and count != 0:
+            ) or 0)
+            if count != 0:
                 raise ValueError("certification could not be deleted")
             verified = 0
         
@@ -532,12 +532,12 @@ def execute_proposal(proposal: dict) -> dict:
                 "DELETE FROM employee_projects WHERE employee_id = ? AND lower(project) = lower(?)",
                 [employee_id, proposal["old_value"]],
             )
-            count = uc.fetchval(
+            count = int(uc.fetchval(
                 "SELECT COUNT(*) FROM employee_projects WHERE employee_id = ? "
                 "AND lower(project) = lower(?)",
                 [employee_id, proposal["old_value"]],
-            )
-            if count and count != 0:
+            ) or 0)
+            if count != 0:
                 raise ValueError("project assignment could not be deleted")
             verified = 0
         
@@ -577,8 +577,8 @@ def execute_proposal(proposal: dict) -> dict:
                 [employee_id, employee_id],
             )
             uc.execute("DELETE FROM employees WHERE employee_id = ?", [employee_id])
-            count = uc.fetchval("SELECT COUNT(*) FROM employees WHERE employee_id = ?", [employee_id])
-            if count and count != 0:
+            count = int(uc.fetchval("SELECT COUNT(*) FROM employees WHERE employee_id = ?", [employee_id]) or 0)
+            if count != 0:
                 raise ValueError("employee could not be deleted")
             verified = 0
         
