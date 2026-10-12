@@ -222,7 +222,7 @@ except Exception as e:
     print(f"⚠️  Unity Catalog connection failed: {e}")
 
 try:
-    STATS = repo.dataset_stats()
+    STATS = c_dataset_stats()
 except Exception as exc:
     fatal(f"Could not read from Unity Catalog: {exc}")
 
@@ -231,6 +231,56 @@ except Exception as exc:
 def get_agent():
     from src.agent.agent import PeopleLensAgent
     return PeopleLensAgent()
+
+
+# ---- Cached read layer -----------------------------------------------
+# Streamlit reruns the whole script (every tab body) on every interaction.
+# Without caching, each rerun fired ~8 Unity Catalog round trips and every
+# tab switch took seconds. Reads are now cached for 5 minutes and the cache
+# is cleared after every successful Data Management write, so changes show
+# up immediately on every page.
+
+_CACHE_TTL = 300  # seconds
+
+
+@st.cache_data(ttl=_CACHE_TTL, show_spinner=False)
+def c_dataset_stats():
+    return repo.dataset_stats()
+
+
+@st.cache_data(ttl=_CACHE_TTL, show_spinner=False)
+def c_list_all_employees():
+    return repo.list_all_employees()
+
+
+@st.cache_data(ttl=_CACHE_TTL, show_spinner=False)
+def c_employee_360(employee_id: str):
+    return repo.get_employee_360(employee_id)
+
+
+@st.cache_data(ttl=_CACHE_TTL, show_spinner=False)
+def c_headcount_by_project():
+    return repo.headcount_by_project()
+
+
+@st.cache_data(ttl=_CACHE_TTL, show_spinner=False)
+def c_certification_counts():
+    return repo.certification_counts()
+
+
+@st.cache_data(ttl=_CACHE_TTL, show_spinner=False)
+def c_top_skills(limit: int = 10):
+    return repo.top_skills(limit)
+
+
+@st.cache_data(ttl=_CACHE_TTL, show_spinner=False)
+def c_skill_categories():
+    return repo.skill_categories()
+
+
+@st.cache_data(ttl=_CACHE_TTL, show_spinner=False)
+def c_employees_without_skills():
+    return repo.employees_without_skills()
 
 
 # ---------------------------------------------------------------- sidebar
@@ -485,6 +535,7 @@ with management_tab:
             if confirm_col.button(action, type="primary", key="confirm_management"):
                 try:
                     results = repo.execute_proposals(proposals) if len(proposals) > 1 else [repo.execute_proposal(proposals[0])]
+                    st.cache_data.clear()  # writes are live: refresh every page immediately
                     st.success(
                         f"SUCCESS: {len(results)} change(s) committed and verified."
                     )
@@ -503,7 +554,7 @@ with management_tab:
 
 # ---- Profile
 with profile_tab:
-    people = repo.list_all_employees()
+    people = c_list_all_employees()
     labels = {f"{r['name']} — {r['employee_id']}": r["employee_id"]
               for _, r in people.iterrows()}
     st.caption(f"All {len(labels)} employees")
@@ -511,7 +562,7 @@ with profile_tab:
                           placeholder="Search for a name or employee id…")
 
     if choice:
-        profile = repo.get_employee_360(labels[choice])
+        profile = c_employee_360(labels[choice])
         st.markdown(f"### {profile['name']}")
         position = profile.get("position") or ""
         designation = profile.get("designation") or ""
@@ -562,31 +613,69 @@ with profile_tab:
                 for category, group in skills.groupby("category"):
                     st.markdown(f"*{category}* — " + ", ".join(group["skill"]))
 
-# ---- Explore
+# ---- Explore (dashboard view)
 with explore_tab:
-    left, right = st.columns(2)
+    st.markdown("#### Team dashboard")
+    st.caption("Live aggregates from Unity Catalog. Pages render from cache, so "
+               "switching tabs is instant; data refreshes every few minutes.")
 
-    with left:
-        st.markdown("**People per project**")
-        st.dataframe(repo.headcount_by_project(), hide_index=True, use_container_width=True)
+    stats = c_dataset_stats()
+    coverage = stats["with_skills"] / max(stats["employees"], 1)
+    total_certs = stats["certifications_confirmed"] + stats["certifications_unconfirmed"]
 
-        st.markdown("**Certifications held**")
-        st.caption("Confirmed = from the person's own skills entry. "
-                   "Unconfirmed = from the copy-pasted block.")
-        st.dataframe(repo.certification_counts(), hide_index=True, use_container_width=True)
-
-    with right:
-        st.markdown("**Most common skills**")
-        how_many = st.slider("How many", 5, 30, 12)
-        top = repo.top_skills(how_many)
-        st.bar_chart(top.set_index("skill")["people"], horizontal=True)
-
-        st.markdown("**Skill categories**")
-        st.dataframe(repo.skill_categories(), hide_index=True, use_container_width=True)
+    # KPI card row
+    kpis = [
+        ("👥 Employees", f"{stats['employees']}"),
+        ("🛠️ Distinct skills", f"{stats['skills']}"),
+        ("📁 Projects", f"{stats['projects']}"),
+        ("📜 Certifications", f"{total_certs}"),
+        ("✅ Skill coverage", f"{coverage:.0%}"),
+    ]
+    cards = st.columns(5)
+    for card, (label, value) in zip(cards, kpis):
+        with card:
+            with st.container(border=True):
+                st.metric(label, value)
 
     st.divider()
-    missing = repo.employees_without_skills()
-    st.markdown(f"**Profiles with no skills recorded — {len(missing)} people**")
+
+    # Charts row: top skills + people per project
+    left, right = st.columns(2)
+    with left:
+        how_many = st.slider("Top skills — how many", 5, 30, 10, key="top_skills_n")
+        st.markdown("##### 🛠️ Most common skills")
+        st.bar_chart(c_top_skills(how_many), x="skill", y="people", horizontal=True)
+
+    with right:
+        st.markdown("##### 📁 People per project")
+        hp = c_headcount_by_project()
+        st.bar_chart(hp.head(12), x="project", y="people", horizontal=True)
+        with st.expander(f"All projects ({len(hp)})"):
+            st.dataframe(hp, hide_index=True, use_container_width=True)
+
+    # Skills by category + certifications
+    cat_col, cert_col = st.columns(2)
+    with cat_col:
+        st.markdown("##### 🗂️ Skills by category")
+        sc = c_skill_categories()
+        st.bar_chart(sc, x="category", y="people")
+        with st.expander("Category detail"):
+            st.dataframe(sc, hide_index=True, use_container_width=True)
+
+    with cert_col:
+        st.markdown("##### 📜 Certifications held")
+        cc = c_certification_counts()
+        st.bar_chart(cc.head(12), x="certification", y="claimed_total", horizontal=True)
+        with st.expander(f"All certifications ({len(cc)})"):
+            st.dataframe(cc, hide_index=True, use_container_width=True)
+
+    st.divider()
+
+    # Coverage gap
+    missing = c_employees_without_skills()
+    gap = len(missing) / max(stats["employees"], 1)
+    st.markdown(f"##### ⚠️ Coverage gap — {len(missing)} profile(s) with no skills recorded")
     st.caption("This is the list to chase. Until these are filled in, any "
                "'nobody has skill X' answer is only true of the people who do have profiles.")
-    st.dataframe(missing, hide_index=True, use_container_width=True)
+    st.progress(1 - gap, text=f"{stats['with_skills']} of {stats['employees']} profiles have skills")
+    st.dataframe(missing, hide_index=True, use_container_width=True, height=220)
