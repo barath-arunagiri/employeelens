@@ -226,15 +226,19 @@ def is_available() -> bool:
 def write_audit(operation: str, employee_id: str, table_name: str,
                  field_name: str | None, old_value, new_value,
                  status: str = "SUCCESS", error_message: str | None = None) -> None:
-    """Write audit log entry to Unity Catalog."""
-    ts = datetime.now(timezone.utc).isoformat()
+    """Write audit log entry to Unity Catalog.
+
+    Column names match the actual change_audit_log schema:
+    change_type (not 'operation') and confirmed_at (not 'timestamp').
+    """
     execute(
         """INSERT INTO change_audit_log
-           (timestamp, operation, employee_id, table_name, field_name,
-            old_value, new_value, status, error_message)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        [ts, operation, employee_id, table_name, field_name,
+           (employee_id, change_type, table_name, field_name,
+            old_value, new_value, confirmed_by, confirmed_at,
+            status, error_message)
+           VALUES (?, ?, ?, ?, ?, ?, ?, current_timestamp(), ?, ?)""",
+        [employee_id, operation, table_name, field_name,
          str(old_value) if old_value is not None else None,
          str(new_value) if new_value is not None else None,
-         status, error_message]
+         "data_management", status, error_message]
     )

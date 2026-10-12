@@ -678,6 +678,25 @@ MANAGEMENT_TOOLS = [
             ],
         },
     },
+
+    {
+        "name": "propose_delete_employee",
+        "description": (
+            "Propose permanently deleting an employee and ALL their linked "
+            "records (skills, projects, certifications, manager links). "
+            "Requires the exact employee_id — never match by name alone. "
+            "Never writes data; Streamlit confirmation is required."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "employee_id": {"type": "string"},
+            },
+            "required": [
+                "employee_id",
+            ],
+        },
+    },
 ]
 
 
@@ -756,6 +775,10 @@ MANAGEMENT_DISPATCH = {
     "propose_update_manager": lambda a: repo.propose_update_manager(
         a["employee_id"],
         a["manager"],
+    ),
+
+    "propose_delete_employee": lambda a: repo.propose_delete_employee(
+        a["employee_id"],
     ),
 }
 

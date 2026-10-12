@@ -50,7 +50,7 @@ def get_audit_history(employee_id: str | None = None,
         clauses.append("employee_id = ?")
         params.append(employee_id.strip())
     if operation:
-        clauses.append("lower(operation) = lower(?)")
+        clauses.append("lower(change_type) = lower(?)")
         params.append(operation.strip())
     if status:
         clauses.append("lower(status) = lower(?)")
@@ -59,7 +59,7 @@ def get_audit_history(employee_id: str | None = None,
     where = " AND ".join(clauses) if clauses else "TRUE"
     return q(
         f"SELECT * FROM change_audit_log WHERE {where} "
-        "ORDER BY timestamp DESC LIMIT ?", params + [limit]
+        "ORDER BY confirmed_at DESC LIMIT ?", params + [limit]
     )
 
 
@@ -243,6 +243,40 @@ def propose_create_employee(employee_id: str, name: str, email: str = "") -> dic
         "operation": "INSERT", "table": "employees", "employee_id": employee_id,
         "field": "employee", "old_value": None, "new_value": name,
         "email": email or None, "requires_confirmation": True,
+    }
+
+
+def propose_delete_employee(employee_id: str) -> dict:
+    """Propose permanently deleting an employee and ALL linked records.
+
+    The app's only cascade delete: removes the employee row plus every
+    skill, project assignment, certification and both directions of the
+    manager links. Irreversible — the Data Management UI must confirm.
+    """
+    employee_id = _validate_employee_value("employee_id", employee_id)
+    if not _employee_exists(employee_id):
+        raise ValueError(f"employee '{employee_id}' was not found")
+
+    def _count(sql: str, params: list) -> int:
+        return uc.fetchval(sql, params) or 0
+
+    name = uc.fetchval("SELECT name FROM employees WHERE employee_id = ?", [employee_id])
+    counts = {
+        "skills": _count("SELECT COUNT(*) FROM employee_skills WHERE employee_id = ?", [employee_id]),
+        "projects": _count("SELECT COUNT(*) FROM employee_projects WHERE employee_id = ?", [employee_id]),
+        "certifications": _count(
+            "SELECT COUNT(*) FROM employee_certifications WHERE employee_id = ?", [employee_id]),
+        "manager_links": _count(
+            "SELECT COUNT(*) FROM employee_managers "
+            "WHERE employee_id = ? OR reporting_id = ?", [employee_id, employee_id]),
+    }
+    return {
+        "operation": "DELETE", "table": "employees", "employee_id": employee_id,
+        "field": "employee", "old_value": name, "new_value": None,
+        "summary": counts,
+        "warning": ("Permanently deletes the employee and all linked skills, "
+                    "projects, certifications and manager links."),
+        "requires_confirmation": True,
     }
 
 
@@ -506,6 +540,21 @@ def execute_proposal(proposal: dict) -> dict:
                 [employee_id, proposal["new_value"], proposal.get("email")],
             )
             verified = uc.fetchval("SELECT employee_id FROM employees WHERE employee_id = ?", [employee_id])
+        
+        elif table == "employees" and operation == "DELETE":
+            # Cascade delete: every linked record goes with the employee.
+            uc.execute("DELETE FROM employee_skills WHERE employee_id = ?", [employee_id])
+            uc.execute("DELETE FROM employee_projects WHERE employee_id = ?", [employee_id])
+            uc.execute("DELETE FROM employee_certifications WHERE employee_id = ?", [employee_id])
+            uc.execute(
+                "DELETE FROM employee_managers WHERE employee_id = ? OR reporting_id = ?",
+                [employee_id, employee_id],
+            )
+            uc.execute("DELETE FROM employees WHERE employee_id = ?", [employee_id])
+            count = uc.fetchval("SELECT COUNT(*) FROM employees WHERE employee_id = ?", [employee_id])
+            if count and count != 0:
+                raise ValueError("employee could not be deleted")
+            verified = 0
         
         elif table == "employee_managers" and operation == "UPDATE":
             reporting_id = proposal["new_value"]

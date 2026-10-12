@@ -520,6 +520,56 @@ with management_tab:
         proposals = st.session_state.get("management_proposals", [])
         if proposals:
             st.markdown("**Proposed changes**")
+
+            import html as _html
+
+            _OP_COLORS = {"DELETE": "#b3261e", "INSERT": "#1e7b34",
+                          "UPDATE": "#8a5a00", "MOVE": "#8a5a00"}
+
+            def _proposal_card(p):
+                """Human-readable, aligned summary of one proposal."""
+                op = p.get("operation", "")
+                color = _OP_COLORS.get(op, "#033c67")
+
+                def esc(v):
+                    return _html.escape(str(v))
+
+                rows = [("Operation", f"{op} on {p.get('table', '')}"),
+                        ("Employee", esc(p.get("employee_id", "")))]
+                if p.get("field") and p.get("field") != "employee":
+                    rows.append(("Field", esc(p["field"])))
+                if p.get("old_value") is not None:
+                    rows.append(("Current value", esc(p["old_value"])))
+                if p.get("new_value") is not None:
+                    rows.append(("New value", esc(p["new_value"])))
+                for extra in ("project", "email", "category", "qualifier", "client",
+                              "technologies", "role", "vendor", "verified"):
+                    if p.get(extra):
+                        rows.append((extra.replace("_", " ").title(), esc(p[extra])))
+                table_rows = "".join(
+                    f"<tr><td style='padding:4px 16px 4px 0;color:#5a6b7a;font-weight:600;"
+                    f"white-space:nowrap;vertical-align:top;width:130px;'>{esc(k)}</td>"
+                    f"<td style='padding:4px 0;'>{v}</td></tr>" for k, v in rows)
+                card = (
+                    f"<div style='border:1px solid #e3e9f0;border-left:4px solid {color};"
+                    f"border-radius:8px;padding:10px 14px;background:#ffffff;margin:2px 0;'>"
+                    f"<table style='border-collapse:collapse;font-size:14px;'>{table_rows}</table>"
+                )
+                s = p.get("summary")
+                if s:
+                    card += (
+                        f"<div style='margin-top:8px;color:#b3261e;font-weight:600;'>"
+                        f"This will permanently remove: {s.get('skills', 0)} skill(s), "
+                        f"{s.get('projects', 0)} project assignment(s), "
+                        f"{s.get('certifications', 0)} certification(s), "
+                        f"{s.get('manager_links', 0)} manager link(s).</div>"
+                    )
+                if p.get("warning"):
+                    card += (f"<div style='margin-top:6px;color:#b3261e;font-size:13px;'>"
+                             f"\u26a0\ufe0f {esc(p['warning'])}</div>")
+                card += "</div>"
+                st.markdown(card, unsafe_allow_html=True)
+
             # Show project_type as a selectable dropdown for project proposals
             for i, proposal in enumerate(proposals):
                 if proposal.get("table") == "employee_projects" and "project_type" in proposal:
@@ -531,7 +581,7 @@ with management_tab:
                         key=f"project_type_select_{i}",
                     )
                     proposal["project_type"] = selected_type
-                st.json(proposal, expanded=True)
+                _proposal_card(proposal)
             action = "Confirm Changes" if len(proposals) > 1 else (
                 "Confirm Delete" if proposals[0]["operation"] == "DELETE" else "Confirm Update"
             )

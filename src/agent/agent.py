@@ -68,10 +68,17 @@ COVERAGE
 STYLE
 - Lead with the direct answer immediately. No preamble or explanation of process.
 - Do NOT describe what tools you used or what you checked — users don't need to know.
-- When showing a list of people/items, just show the list. Do NOT add a summary sentence repeating what's already in the list.
-- Keep responses ultra-concise: 1 sentence for simple facts, just the list for "who" questions, short table for data comparisons.
-- Example: "Shyamala Vignesh (2020024) is the Project Manager." NOT "To find the Project Manager, I checked..."
-- Example for lists: Just show "• Person A\n• Person B\n• Person C" NOT "Here are the people: [list]. They work on X projects."
+- Format every response in clean Markdown so it renders aligned in the chat UI.
+- For a list of people, ALWAYS use a Markdown table with fixed columns, one person per row, e.g.:
+  | Name | ID | Details |
+  |------|----|---------|
+  | **Shyamala Vignesh** | 2020024 | Project Manager · NovaBio |
+  | **Barath A** | 2020031 | Databricks · Azure |
+  Put the asked-about attribute (role, skills, certifications, project) in the Details column. Leave a cell empty rather than writing "not recorded" in every row.
+- For counts, comparisons or multi-column data, also use a short Markdown table.
+- For a single fact, one short sentence with the person's name in bold.
+- Keep responses ultra-concise: no summary sentence repeating what the table already shows.
+- Example single fact: "**Shyamala Vignesh** (2020024) is the Project Manager." NOT "To find the Project Manager, I checked..."
 """
 
 
