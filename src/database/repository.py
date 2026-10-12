@@ -99,6 +99,30 @@ def propose_employee_update(employee_id: str, field: str, new_value: str) -> dic
     }
 
 
+# Categories actually used in employee_skills (verified against live data
+# 2026-10-12). The agent must classify into one of these — never invent
+# values like 'Technical'.
+VALID_SKILL_CATEGORIES = [
+    "Language", "Database", "AI", "Tool", "Platform",
+    "Security", "Design", "BI", "Cloud", "OS", "Other",
+]
+_VALID_CATEGORIES_LOWER = {c.lower(): c for c in VALID_SKILL_CATEGORIES}
+
+
+def _validate_skill_category(category: str | None) -> str:
+    """Accept a real category (case-insensitive); never invent one."""
+    value = (category or "").strip()
+    if not value:
+        return "Other"
+    canonical = _VALID_CATEGORIES_LOWER.get(value.lower())
+    if canonical:
+        return canonical
+    raise ValueError(
+        f"category '{value}' is not used in this data. Valid categories: "
+        + ", ".join(VALID_SKILL_CATEGORIES)
+    )
+
+
 def propose_add_skill(employee_id: str, skill: str, category: str = "Other",
                       qualifier: str = "") -> dict:
     if not _employee_exists(employee_id):
@@ -113,7 +137,7 @@ def propose_add_skill(employee_id: str, skill: str, category: str = "Other",
     return {
         "operation": "INSERT", "table": "employee_skills", "employee_id": employee_id,
         "field": "skill", "old_value": None, "new_value": skill,
-        "category": category or "Other", "qualifier": qualifier or None,
+        "category": _validate_skill_category(category), "qualifier": qualifier or None,
         "requires_confirmation": True,
     }
 

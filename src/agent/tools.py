@@ -459,7 +459,18 @@ MANAGEMENT_TOOLS = [
             "properties": {
                 "employee_id": {"type": "string"},
                 "skill": {"type": "string"},
-                "category": {"type": "string"},
+                "category": {
+                    "type": "string",
+                    "description": (
+                        "One of the categories actually used in this data: "
+                        "Language, Database, AI, Tool, Platform, Security, "
+                        "Design, BI, Cloud, OS, Other. Classify from what the "
+                        "skill IS (Python → Language, PostgreSQL → Database, "
+                        "Databricks → Platform, Power BI → BI, Docker → Tool). "
+                        "Never invent a category; omit only if genuinely "
+                        "unclassifiable."
+                    ),
+                },
                 "qualifier": {"type": "string"},
             },
             "required": [
