@@ -626,19 +626,6 @@ with explore_tab:
 
     stats = c_dataset_stats()
     coverage = stats["with_skills"] / max(stats["employees"], 1)
-    total_certs = stats["certifications_confirmed"] + stats["certifications_unconfirmed"]
-
-    # --- KPI cards ---
-    def _kpi_card(title, value, sub):
-        return (
-            '<div style="background:#ffffff;border:1px solid #e3e9f0;border-radius:12px;'
-            'padding:14px 16px;box-shadow:0 2px 6px rgba(3,60,103,.08);height:100%;">'
-            f'<div style="font-size:11px;letter-spacing:.09em;text-transform:uppercase;'
-            f'color:#7a8896;font-weight:700;">{title}</div>'
-            f'<div style="font-size:27px;font-weight:800;color:#033c67;margin-top:4px;">{value}</div>'
-            f'<div style="font-size:12px;color:#f46902;font-weight:600;margin-top:2px;">{sub}</div>'
-            '</div>'
-        )
 
     def _section(title):
         st.markdown(
@@ -646,20 +633,6 @@ with explore_tab:
             f'font-size:17px;font-weight:700;color:#033c67;margin:10px 0 6px;">{title}</div>',
             unsafe_allow_html=True,
         )
-
-    kpi_cols = st.columns(5)
-    kpi_cols[0].markdown(_kpi_card("Employees", stats["employees"],
-                                   f"{stats['with_skills']} with skills"), unsafe_allow_html=True)
-    kpi_cols[1].markdown(_kpi_card("Distinct skills", stats["skills"], "across all teams"),
-                          unsafe_allow_html=True)
-    kpi_cols[2].markdown(_kpi_card("Projects", stats["projects"], "active engagements"),
-                          unsafe_allow_html=True)
-    kpi_cols[3].markdown(_kpi_card("Certifications", total_certs,
-                                   f"{stats['certifications_confirmed']} verified"), unsafe_allow_html=True)
-    kpi_cols[4].markdown(_kpi_card("Skill coverage", f"{coverage:.0%}",
-                                   f"{stats['employees'] - stats['with_skills']} pending"), unsafe_allow_html=True)
-
-    st.write("")
 
     # --- Charts row 1: top skills + people per project ---
     left, right = st.columns(2)
