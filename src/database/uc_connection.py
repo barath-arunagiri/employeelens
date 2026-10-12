@@ -35,6 +35,17 @@ TABLES = {
 }
 
 _warehouse_id: Optional[str] = None
+_client = None
+
+
+def _get_client():
+    """Reuse one WorkspaceClient across queries. Creating a fresh client for
+    every single statement forced a new OAuth token exchange per query, which
+    multiplied the latency of multi-query operations (e.g. a 360 profile)."""
+    global _client
+    if _client is None:
+        _client = WorkspaceClient()
+    return _client
 
 
 def _get_warehouse_id() -> str:
@@ -45,7 +56,7 @@ def _get_warehouse_id() -> str:
     # (falls back to the first warehouse in the workspace if unset).
     _warehouse_id = os.environ.get("DATABRICKS_SQL_WAREHOUSE_ID") or None
     if not _warehouse_id:
-        w = WorkspaceClient()
+        w = _get_client()
         warehouses = list(w.warehouses.list())
         if not warehouses:
             raise RuntimeError("No SQL warehouse available")
@@ -69,7 +80,7 @@ def _run_statement(sql: str):
     running server-side, so we poll it via get_statement rather than
     resubmitting (a resubmitted INSERT/UPDATE could apply twice).
     """
-    w = WorkspaceClient()
+    w = _get_client()
     response = w.statement_execution.execute_statement(
         warehouse_id=_get_warehouse_id(),
         statement=sql,

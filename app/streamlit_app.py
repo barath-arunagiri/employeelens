@@ -619,67 +619,123 @@ with profile_tab:
 
 # ---- Explore (dashboard view)
 with explore_tab:
+    import altair as alt
+
     st.markdown("#### Team dashboard")
-    st.caption("Live aggregates from Unity Catalog. Pages render from cache, so "
-               "switching tabs is instant; data refreshes every few minutes.")
+    st.caption("Live aggregates from Unity Catalog · auto-refreshes every 5 minutes")
 
     stats = c_dataset_stats()
     coverage = stats["with_skills"] / max(stats["employees"], 1)
     total_certs = stats["certifications_confirmed"] + stats["certifications_unconfirmed"]
 
-    # KPI card row
-    kpis = [
-        ("👥 Employees", f"{stats['employees']}"),
-        ("🛠️ Distinct skills", f"{stats['skills']}"),
-        ("📁 Projects", f"{stats['projects']}"),
-        ("📜 Certifications", f"{total_certs}"),
-        ("✅ Skill coverage", f"{coverage:.0%}"),
-    ]
-    cards = st.columns(5)
-    for card, (label, value) in zip(cards, kpis):
-        with card:
-            with st.container(border=True):
-                st.metric(label, value)
+    # --- KPI cards ---
+    def _kpi_card(title, value, sub):
+        return (
+            '<div style="background:#ffffff;border:1px solid #e3e9f0;border-radius:12px;'
+            'padding:14px 16px;box-shadow:0 2px 6px rgba(3,60,103,.08);height:100%;">'
+            f'<div style="font-size:11px;letter-spacing:.09em;text-transform:uppercase;'
+            f'color:#7a8896;font-weight:700;">{title}</div>'
+            f'<div style="font-size:27px;font-weight:800;color:#033c67;margin-top:4px;">{value}</div>'
+            f'<div style="font-size:12px;color:#f46902;font-weight:600;margin-top:2px;">{sub}</div>'
+            '</div>'
+        )
 
-    st.divider()
+    def _section(title):
+        st.markdown(
+            f'<div style="border-left:4px solid #f46902;padding-left:10px;'
+            f'font-size:17px;font-weight:700;color:#033c67;margin:10px 0 6px;">{title}</div>',
+            unsafe_allow_html=True,
+        )
 
-    # Charts row: top skills + people per project
+    kpi_cols = st.columns(5)
+    kpi_cols[0].markdown(_kpi_card("Employees", stats["employees"],
+                                   f"{stats['with_skills']} with skills"), unsafe_allow_html=True)
+    kpi_cols[1].markdown(_kpi_card("Distinct skills", stats["skills"], "across all teams"),
+                          unsafe_allow_html=True)
+    kpi_cols[2].markdown(_kpi_card("Projects", stats["projects"], "active engagements"),
+                          unsafe_allow_html=True)
+    kpi_cols[3].markdown(_kpi_card("Certifications", total_certs,
+                                   f"{stats['certifications_confirmed']} verified"), unsafe_allow_html=True)
+    kpi_cols[4].markdown(_kpi_card("Skill coverage", f"{coverage:.0%}",
+                                   f"{stats['employees'] - stats['with_skills']} pending"), unsafe_allow_html=True)
+
+    st.write("")
+
+    # --- Charts row 1: top skills + people per project ---
     left, right = st.columns(2)
     with left:
-        how_many = st.slider("Top skills — how many", 5, 30, 10, key="top_skills_n")
-        st.markdown("##### 🛠️ Most common skills")
-        st.bar_chart(c_top_skills(how_many), x="skill", y="people", horizontal=True)
+        how_many = st.slider("Top skills", 5, 30, 10, key="top_skills_n")
+        _section("🛠️ Most common skills")
+        st.altair_chart(
+            alt.Chart(c_top_skills(how_many))
+            .mark_bar(color="#f46902", cornerRadiusEnd=3)
+            .encode(
+                y=alt.Y("skill:N", sort="-x"),
+                x=alt.X("people:Q", title="People"),
+                tooltip=["skill", "category", "people"],
+            )
+            .properties(height=310),
+            use_container_width=True,
+        )
 
     with right:
-        st.markdown("##### 📁 People per project")
+        _section("📁 People per project")
         hp = c_headcount_by_project()
-        st.bar_chart(hp.head(12), x="project", y="people", horizontal=True)
-        with st.expander(f"All projects ({len(hp)})"):
+        st.altair_chart(
+            alt.Chart(hp)
+            .mark_bar(color="#033c67", cornerRadiusEnd=3)
+            .encode(
+                y=alt.Y("project:N", sort="-x"),
+                x=alt.X("people:Q", title="People"),
+                tooltip=["project", "client", "people"],
+            )
+            .properties(height=310),
+            use_container_width=True,
+        )
+        with st.expander(f"Project detail ({len(hp)})"):
             st.dataframe(hp, hide_index=True, use_container_width=True)
 
-    # Skills by category + certifications
+    # --- Charts row 2: skills by category (donut) + certifications ---
     cat_col, cert_col = st.columns(2)
     with cat_col:
-        st.markdown("##### 🗂️ Skills by category")
+        _section("🗂️ Skills by category")
         sc = c_skill_categories()
-        st.bar_chart(sc, x="category", y="people")
-        with st.expander("Category detail"):
-            st.dataframe(sc, hide_index=True, use_container_width=True)
+        st.altair_chart(
+            alt.Chart(sc)
+            .mark_arc(innerRadius=62, outerRadius=110, stroke="#ffffff", strokeWidth=2)
+            .encode(
+                theta=alt.Theta("people:Q"),
+                color=alt.Color("category:N", scale=alt.Scale(scheme="oranges")),
+                tooltip=["category", "skills", "people"],
+            )
+            .properties(height=280),
+            use_container_width=True,
+        )
 
     with cert_col:
-        st.markdown("##### 📜 Certifications held")
+        _section("📜 Certifications held")
         cc = c_certification_counts()
-        st.bar_chart(cc.head(12), x="certification", y="claimed_total", horizontal=True)
-        with st.expander(f"All certifications ({len(cc)})"):
+        st.altair_chart(
+            alt.Chart(cc)
+            .mark_bar(color="#f18a31", cornerRadiusEnd=3)
+            .encode(
+                y=alt.Y("certification:N", sort="-x"),
+                x=alt.X("claimed_total:Q", title="People"),
+                tooltip=["certification", "confirmed", "unconfirmed", "claimed_total"],
+            )
+            .properties(height=280),
+            use_container_width=True,
+        )
+        with st.expander(f"Certification detail ({len(cc)})"):
             st.dataframe(cc, hide_index=True, use_container_width=True)
 
-    st.divider()
+    st.write("")
 
-    # Coverage gap
+    # --- Coverage gap ---
     missing = c_employees_without_skills()
-    gap = len(missing) / max(stats["employees"], 1)
-    st.markdown(f"##### ⚠️ Coverage gap — {len(missing)} profile(s) with no skills recorded")
+    _section(f"⚠️ Coverage gap — {len(missing)} profile(s) with no skills recorded")
     st.caption("This is the list to chase. Until these are filled in, any "
                "'nobody has skill X' answer is only true of the people who do have profiles.")
-    st.progress(1 - gap, text=f"{stats['with_skills']} of {stats['employees']} profiles have skills")
-    st.dataframe(missing, hide_index=True, use_container_width=True, height=220)
+    st.progress(coverage, text=f"{stats['with_skills']} of {stats['employees']} profiles have skills")
+    with st.expander("Profiles to chase"):
+        st.dataframe(missing, hide_index=True, use_container_width=True, height=240)

@@ -10,6 +10,7 @@ string into SQL.
 """
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime, timezone
 
@@ -629,23 +630,69 @@ def get_direct_reports(employee_id: str) -> pd.DataFrame:
 
 
 def get_employee_360(employee_id: str) -> dict:
-    """One call for everything known about a person."""
-    person = get_employee(employee_id)
-    if person.empty:
+    """One call for everything known about a person — in ONE SQL round trip.
+
+    The previous version fired 6 sequential statements (one per section),
+    each with its own SDK client and token exchange, which made a cold
+    profile selection take minutes.
+    """
+    row = q(
+        """
+        SELECT e.employee_id, e.name, e.email, e.position, e.designation, e.team,
+               (SELECT to_json(collect_list(struct(s.skill AS skill, s.category AS category, s.qualifier AS qualifier)))
+                  FROM employee_skills s WHERE s.employee_id = e.employee_id)   AS skills_json,
+               (SELECT to_json(collect_list(struct(p.project AS project, p.client AS client,
+                        p.technologies AS technologies, COALESCE(p.project_type, 'main') AS project_type)))
+                  FROM employee_projects p WHERE p.employee_id = e.employee_id) AS projects_json,
+               (SELECT to_json(collect_list(struct(c.certification AS certification, c.vendor AS vendor,
+                        c.verified AS verified, c.source AS source)))
+                  FROM employee_certifications c WHERE c.employee_id = e.employee_id) AS certifications_json,
+               (SELECT collect_list(e2.name)
+                  FROM employee_managers m JOIN employees e2 ON e2.employee_id = m.reporting_id
+                 WHERE m.employee_id = e.employee_id)                AS reports_to,
+               (SELECT collect_list(e3.name)
+                  FROM employee_managers m2 JOIN employees e3 ON e3.employee_id = m2.employee_id
+                 WHERE m2.reporting_id = e.employee_id)              AS direct_reports
+        FROM employees e WHERE e.employee_id = ?
+        """,
+        [employee_id],
+    )
+    if row.empty:
         return {}
-    row = person.iloc[0]
+    r = row.iloc[0]
+
+    def _records(col):
+        raw = r[col]
+        if raw is None or raw == "" or raw == "[]":
+            return []
+        if isinstance(raw, str):
+            return json.loads(raw)
+        return list(raw)
+
+    def _names(col):
+        raw = r[col]
+        if raw is None or raw == "" or raw == "[]":
+            return []
+        if isinstance(raw, str):
+            return [str(x) for x in json.loads(raw)]
+        return [str(x) for x in raw]
+
     return {
-        "employee_id": row["employee_id"],
-        "name": row["name"],
-        "email": row["email"],
-        "position": row["position"],
-        "designation": row["designation"],
-        "team": row["team"],
-        "skills": get_employee_skills(employee_id).to_dict("records"),
-        "projects": get_employee_projects(employee_id).to_dict("records"),
-        "certifications": get_employee_certifications(employee_id).to_dict("records"),
-        "reports_to": get_manager_chain(employee_id)["manager_name"].tolist(),
-        "direct_reports": get_direct_reports(employee_id)["name"].tolist(),
+        "employee_id": r["employee_id"],
+        "name": r["name"],
+        "email": r["email"],
+        "position": r["position"],
+        "designation": r["designation"],
+        "team": r["team"],
+        "skills": sorted(_records("skills_json"),
+                         key=lambda s: (s.get("category") or "", s.get("skill") or "")),
+        "projects": sorted(_records("projects_json"),
+                           key=lambda p: p.get("project") or ""),
+        "certifications": sorted(_records("certifications_json"),
+                                 key=lambda c: (str(c.get("verified")).lower() != "true",
+                                                c.get("certification") or "")),
+        "reports_to": sorted(_names("reports_to")),
+        "direct_reports": sorted(_names("direct_reports")),
     }
 
 
