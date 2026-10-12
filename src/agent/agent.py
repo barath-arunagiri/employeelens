@@ -457,6 +457,7 @@ class PeopleLensAgent:
                     "\n\nBATCH REQUESTS:\n"
                     "- For 'add cert to Barath, Nisha, Sanjai' → resolve all three names first, then call the proposal tool once per employee IN THE SAME response. "
                     "- Use parallel tool calls - do not wait for one proposal to complete before creating the next. "
+                    "- If a tool returns an error such as 'already exists', that item needs no change: skip it, mention the skip in your final answer, and continue with the remaining items — never abandon the rest of a batch because one item failed. "
                     "\n\nHISTORY QUERIES:\n"
                     "- For history questions, use get_audit_history and answer from its rows without confirmation. "
                     "\n\nSTRICT RULES:\n"
@@ -546,6 +547,7 @@ class PeopleLensAgent:
             )
 
             proposals = []
+            errors = []
 
             for call in message.tool_calls:
                 try:
@@ -591,12 +593,12 @@ class PeopleLensAgent:
                 )
 
                 if "error" in output:
-                    return AgentResult(
-                        output["error"],
-                        trace,
-                        round_no,
-                        f"Databricks · {self.model}",
+                    # A failed item (e.g. 'already exists') must not abort the
+                    # rest of the batch — note it and keep going.
+                    errors.append(
+                        f"{call.function.name}: {output['error']}"
                     )
+                    continue
 
                 # Only management tools generate proposals, not read-only tools
                 if call.function.name not in ["get_audit_history", "search_employees", "get_employee_360"]:
@@ -605,17 +607,31 @@ class PeopleLensAgent:
                     )
 
             if proposals:
+                summary = (
+                    "Please review the proposed changes and "
+                    "confirm them in the Data Management tab."
+                )
+                if errors:
+                    summary = (
+                        f"Skipped {len(errors)} item(s): " + " | ".join(errors)
+                        + " — " + summary
+                    )
                 return AgentResult(
-                    (
-                        "Please review the proposed changes and "
-                        "confirm them in the Data Management tab."
-                    ),
+                    summary,
                     trace,
                     round_no,
                     f"Databricks · {self.model}",
                     proposals[0],
                     [],
                     proposals,
+                )
+
+            if errors:
+                return AgentResult(
+                    "Could not prepare any changes. " + " | ".join(errors),
+                    trace,
+                    round_no,
+                    f"Databricks · {self.model}",
                 )
 
             # No proposals yet - continue loop if agent only called read-only tools

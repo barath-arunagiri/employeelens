@@ -64,7 +64,9 @@ def get_audit_history(employee_id: str | None = None,
 
 
 def _employee_exists(employee_id: str) -> bool:
-    return uc.query(
+    # fetchone returns None when no row matches; uc.query would return an
+    # empty DataFrame, which is never None — that made this check always True.
+    return uc.fetchone(
         "SELECT 1 FROM employees WHERE employee_id = ?", [employee_id]
     ) is not None
 
@@ -590,8 +592,14 @@ def execute_proposals(proposals: list[dict]) -> list[dict]:
     
     results = []
     for proposal in proposals:
-        result = execute_proposal(proposal)
-        results.append(result)
+        try:
+            results.append(execute_proposal(proposal))
+        except Exception as exc:  # noqa: BLE001
+            # One failed item (e.g. 'already exists') must not abort the
+            # rest of the batch — record it and continue.
+            results.append(
+                {"status": "ERROR", "proposal": proposal, "error": str(exc)}
+            )
     return results
 
 

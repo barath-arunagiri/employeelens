@@ -588,11 +588,20 @@ with management_tab:
             confirm_col, cancel_col = st.columns(2)
             if confirm_col.button(action, type="primary", key="confirm_management"):
                 try:
-                    results = repo.execute_proposals(proposals) if len(proposals) > 1 else [repo.execute_proposal(proposals[0])]
+                    results = repo.execute_proposals(proposals)
                     st.cache_data.clear()  # writes are live: refresh every page immediately
-                    st.success(
-                        f"SUCCESS: {len(results)} change(s) committed and verified."
-                    )
+                    ok = [r for r in results if r.get("status") == "SUCCESS"]
+                    failed = [r for r in results if r.get("status") != "SUCCESS"]
+                    if ok:
+                        st.success(
+                            f"SUCCESS: {len(ok)} change(s) committed and verified."
+                        )
+                    for r in failed:
+                        p = r.get("proposal", {})
+                        st.warning(
+                            f"Skipped {p.get('operation')} on {p.get('table')} "
+                            f"for {p.get('employee_id')}: {r.get('error', 'unknown error')}"
+                        )
                     st.session_state.management_proposal = None
                     st.session_state.management_proposals = []
                     st.session_state.management_message = None
