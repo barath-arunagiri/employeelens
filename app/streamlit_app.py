@@ -206,39 +206,13 @@ def fatal(message: str) -> None:
     st.stop()
 
 
-# Unity Catalog is the single source of truth.
-# No DuckDB, no CSV, no caching — all queries go directly to Delta tables.
-
-delta_sync_succeeded = False
-
-try:
-    from src.database import uc_connection
-    if uc_connection.is_available():
-        print("✅ Connected to Unity Catalog (workspace.employeelens)")
-        delta_sync_succeeded = True
-    else:
-        print("⚠️  Unity Catalog not available")
-except Exception as e:
-    print(f"⚠️  Unity Catalog connection failed: {e}")
-
-try:
-    STATS = c_dataset_stats()
-except Exception as exc:
-    fatal(f"Could not read from Unity Catalog: {exc}")
-
-
-@st.cache_resource(show_spinner=False)
-def get_agent():
-    from src.agent.agent import PeopleLensAgent
-    return PeopleLensAgent()
-
-
 # ---- Cached read layer -----------------------------------------------
 # Streamlit reruns the whole script (every tab body) on every interaction.
 # Without caching, each rerun fired ~8 Unity Catalog round trips and every
 # tab switch took seconds. Reads are now cached for 5 minutes and the cache
 # is cleared after every successful Data Management write, so changes show
-# up immediately on every page.
+# up immediately on every page. NOTE: these definitions must stay ABOVE
+# the first use (STATS = c_dataset_stats()) at module level.
 
 _CACHE_TTL = 300  # seconds
 
@@ -281,6 +255,36 @@ def c_skill_categories():
 @st.cache_data(ttl=_CACHE_TTL, show_spinner=False)
 def c_employees_without_skills():
     return repo.employees_without_skills()
+
+
+# Unity Catalog is the single source of truth; reads go through the cached
+# layer above so page switches don't re-query Delta tables on every rerun.
+
+delta_sync_succeeded = False
+
+try:
+    from src.database import uc_connection
+    if uc_connection.is_available():
+        print("✅ Connected to Unity Catalog (workspace.employeelens)")
+        delta_sync_succeeded = True
+    else:
+        print("⚠️  Unity Catalog not available")
+except Exception as e:
+    print(f"⚠️  Unity Catalog connection failed: {e}")
+
+try:
+    STATS = c_dataset_stats()
+except Exception as exc:
+    fatal(f"Could not read from Unity Catalog: {exc}")
+
+
+@st.cache_resource(show_spinner=False)
+def get_agent():
+    from src.agent.agent import PeopleLensAgent
+    return PeopleLensAgent()
+
+
+
 
 
 # ---------------------------------------------------------------- sidebar
