@@ -472,6 +472,7 @@ class PeopleLensAgent:
                     "\n\nHISTORY QUERIES:\n"
                     "- For history questions, use get_audit_history and answer from its rows without confirmation. "
                     "\n\nSTRICT RULES:\n"
+                    "- Act, don't announce: never end a response with 'preparing', 'please wait', or a promise of a future action. When a change is needed, emit the proposal tool call(s) IMMEDIATELY in that same response; write the professional summary AFTER the tool results arrive. "
                     "- Never invent employee IDs, records, or values. "
                     "- Proposal tools never write to Unity Catalog — they only prepare proposals for user confirmation. "
                     "- If name resolution fails, explain why and ask for clarification."
@@ -536,6 +537,27 @@ class PeopleLensAgent:
             message = response.choices[0].message
 
             if not message.tool_calls:
+                # Agentic self-correction: if the FIRST round ends in prose
+                # (e.g. "Please wait while I prepare...") without a single
+                # tool call, nudge the model once to actually act instead of
+                # returning the half-finished narration to the user.
+                if round_no == 1 and not trace:
+                    messages.append(
+                        {
+                            "role": "assistant",
+                            "content": _extract_content_text(message.content),
+                        }
+                    )
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                "Do not narrate — act now. Make the required "
+                                "proposal tool call(s) in your next response."
+                            ),
+                        }
+                    )
+                    continue
                 return AgentResult(
                     _extract_content_text(message.content).strip(),
                     trace,
