@@ -7,7 +7,9 @@ No DuckDB, no CSV, no caching — Unity Catalog is the single source of truth.
 """
 from __future__ import annotations
 
+import os
 import re
+import time
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -39,12 +41,46 @@ def _get_warehouse_id() -> str:
     global _warehouse_id
     if _warehouse_id:
         return _warehouse_id
-    w = WorkspaceClient()
-    warehouses = list(w.warehouses.list())
-    if not warehouses:
-        raise RuntimeError("No SQL warehouse available")
-    _warehouse_id = warehouses[0].id
+    # Prefer the warehouse configured in app.yaml via DATABRICKS_SQL_WAREHOUSE_ID
+    # (falls back to the first warehouse in the workspace if unset).
+    _warehouse_id = os.environ.get("DATABRICKS_SQL_WAREHOUSE_ID") or None
+    if not _warehouse_id:
+        w = WorkspaceClient()
+        warehouses = list(w.warehouses.list())
+        if not warehouses:
+            raise RuntimeError("No SQL warehouse available")
+        _warehouse_id = warehouses[0].id
     return _warehouse_id
+
+
+_TERMINAL_STATES = (
+    StatementState.SUCCEEDED,
+    StatementState.FAILED,
+    StatementState.CANCELED,
+)
+
+
+def _run_statement(sql: str):
+    """Execute a SQL statement, tolerating serverless warehouse cold-start.
+
+    A stopped serverless warehouse auto-starts on the first statement, which can
+    push the response past the sync wait window - it then comes back in a
+    non-terminal state (PENDING/RUNNING) with no error. The statement keeps
+    running server-side, so we poll it via get_statement rather than
+    resubmitting (a resubmitted INSERT/UPDATE could apply twice).
+    """
+    w = WorkspaceClient()
+    response = w.statement_execution.execute_statement(
+        warehouse_id=_get_warehouse_id(),
+        statement=sql,
+        wait_timeout="50s",
+    )
+    deadline = time.monotonic() + 60
+    while (response.status.state not in _TERMINAL_STATES
+           and time.monotonic() < deadline):
+        time.sleep(3)
+        response = w.statement_execution.get_statement(response.statement_id)
+    return response
 
 
 def _escape(value) -> str:
@@ -114,13 +150,7 @@ def query(sql: str, params: list | None = None) -> pd.DataFrame:
     full_sql = _fix_table_names(full_sql)
     full_sql = _fix_sql_dialect(full_sql)
     
-    w = WorkspaceClient()
-    warehouse_id = _get_warehouse_id()
-    
-    response = w.statement_execution.execute_statement(
-        warehouse_id=warehouse_id,
-        statement=full_sql,
-    )
+    response = _run_statement(full_sql)
     
     if response.status.state == StatementState.SUCCEEDED:
         if not response.result or not response.result.data_array:
@@ -134,10 +164,8 @@ def query(sql: str, params: list | None = None) -> pd.DataFrame:
         rows = [list(row) for row in response.result.data_array]
         return pd.DataFrame(rows, columns=cols)
     else:
-        error_msg = "Unknown error"
-        if response.status.error:
-            error_msg = response.status.error.message or error_msg
-        raise RuntimeError(f"SQL error: {error_msg}\nQuery: {full_sql[:200]}")
+        error_msg = response.status.error.message if response.status.error else "no error details"
+        raise RuntimeError(f"SQL error ({response.status.state}): {error_msg}\nQuery: {full_sql[:200]}")
 
 
 def execute(sql: str, params: list | None = None) -> int:
@@ -148,21 +176,13 @@ def execute(sql: str, params: list | None = None) -> int:
     full_sql = _build_sql(sql, params)
     full_sql = _fix_table_names(full_sql)
     
-    w = WorkspaceClient()
-    warehouse_id = _get_warehouse_id()
-    
-    response = w.statement_execution.execute_statement(
-        warehouse_id=warehouse_id,
-        statement=full_sql,
-    )
+    response = _run_statement(full_sql)
     
     if response.status.state == StatementState.SUCCEEDED:
         return 1  # Success
     else:
-        error_msg = "Unknown error"
-        if response.status.error:
-            error_msg = response.status.error.message or error_msg
-        raise RuntimeError(f"SQL error: {error_msg}\nQuery: {full_sql[:200]}")
+        error_msg = response.status.error.message if response.status.error else "no error details"
+        raise RuntimeError(f"SQL error ({response.status.state}): {error_msg}\nQuery: {full_sql[:200]}")
 
 
 def fetchone(sql: str, params: list | None = None):

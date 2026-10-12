@@ -17,7 +17,6 @@ RAW_DIR = DATA_DIR / "raw"
 REFERENCE_DIR = DATA_DIR / "reference"
 CLEAN_DIR = DATA_DIR / "clean"
 REPORTS_DIR = DATA_DIR / "reports"
-DB_PATH = ROOT / "database" / "peoplelens.duckdb"
 
 DETAILS_XLSX = RAW_DIR / "Details.xlsx"
 OCCUPATIONALS_XLSX = RAW_DIR / "Data_Team_Occupationals.xlsx"

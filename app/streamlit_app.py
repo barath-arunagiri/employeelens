@@ -18,7 +18,7 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from src.config import (APP_NAME, CLEAN_DIR, DATA_MANAGEMENT_ENABLED, DATA_MANAGEMENT_PIN, 
+from src.config import (APP_NAME, DATA_MANAGEMENT_ENABLED, DATA_MANAGEMENT_PIN, 
                         DATABRICKS_MODEL, REPORTS_DIR)  # noqa: E402
 from src.database import repository as repo                                       # noqa: E402
 
