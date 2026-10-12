@@ -441,7 +441,10 @@ with ask_tab:
                     result = get_agent().ask(prompt, history=history)
                     answer, trace = result.answer, result.trace
                 except Exception as exc:                        # noqa: BLE001
-                    answer, trace = f"Something went wrong: `{exc}`", []
+                    answer, trace = (
+                            f"I hit an error while answering that "
+                            f"({type(exc).__name__}). Please try again."
+                        ), []
             st.markdown(answer)
             # Show trace only if debug mode is enabled
             if trace and st.session_state.get("debug_mode", False):
@@ -494,15 +497,29 @@ with management_tab:
             else:
                 with st.spinner("Preparing a proposed change..."):
                     try:
-                        result = get_agent().propose_management(request)
+                        result = get_agent().propose_management(
+                            request,
+                            history=st.session_state.get("management_history", [])[-12:],
+                        )
                         st.session_state.management_proposals = result.proposals or ([result.proposal] if result.proposal else [])
                         st.session_state.management_proposal = result.proposal
                         st.session_state.management_message = result.answer
+                        if "management_history" not in st.session_state:
+                            st.session_state.management_history = []
+                        st.session_state.management_history.append(
+                            {"role": "user", "content": request}
+                        )
+                        st.session_state.management_history.append(
+                            {"role": "assistant", "content": result.answer}
+                        )
                         st.session_state.management_trace = result.trace
                     except Exception as exc:                    # noqa: BLE001
                         st.session_state.management_proposal = None
                         st.session_state.management_proposals = []
-                        st.session_state.management_message = f"Something went wrong: {exc}"
+                        st.session_state.management_message = (
+                            f"I hit an error preparing that change "
+                            f"({type(exc).__name__}). Please try again."
+                        )
                         st.session_state.management_trace = []
 
         if st.session_state.get("management_message"):

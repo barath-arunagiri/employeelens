@@ -416,18 +416,29 @@ class PeopleLensAgent:
     ) -> AgentResult:
         """
         Answer a normal employee-data question.
+
+        Only the most recent messages are sent so long conversations do
+        not overflow the model context, while follow-up references
+        ("show me their projects") still resolve.
         """
         return self._run_groq(
             question,
-            history or [],
+            (history or [])[-16:],
         )
 
-    def propose_management(self, request: str) -> AgentResult:
+    def propose_management(
+        self,
+        request: str,
+        history: list[dict] | None = None,
+    ) -> AgentResult:
         """
         Handle employee-data management requests.
 
         Management tools only create proposals.
         They do not directly write to Unity Catalog.
+
+        Recent conversation history is included so follow-up requests
+        ("now do the same for Nisha") resolve correctly.
         """
 
         messages = [
@@ -466,6 +477,7 @@ class PeopleLensAgent:
                     "- If name resolution fails, explain why and ask for clarification."
                 ),
             },
+            *list(history or [])[-12:],
             {
                 "role": "user",
                 "content": request,
@@ -511,7 +523,11 @@ class PeopleLensAgent:
                     )
 
                 return AgentResult(
-                    answer=f"Databricks request failed: {exc}",
+                    answer=(
+                        "I couldn't complete that request — a backend error "
+                        f"occurred ({type(exc).__name__}). Please try again, "
+                        "or rephrase the request."
+                    ),
                     trace=trace,
                     rounds=round_no,
                     backend=f"Databricks · {self._get_model_display()}",
@@ -740,7 +756,11 @@ class PeopleLensAgent:
                     )
 
                 return AgentResult(
-                    answer=f"Databricks request failed: {exc}",
+                    answer=(
+                        "I couldn't complete that request — a backend error "
+                        f"occurred ({type(exc).__name__}). Please try again, "
+                        "or rephrase the request."
+                    ),
                     trace=trace,
                     rounds=round_no,
                     backend=f"Databricks · {self._get_model_display()}",
