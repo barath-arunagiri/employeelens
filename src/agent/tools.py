@@ -444,6 +444,32 @@ DISPATCH = {
 
 MANAGEMENT_TOOLS = [
     {
+        "name": "propose_clone_skills",
+        "description": (
+            "Copy ALL skills of one employee (with their real categories) to another "
+            "employee in ONE confirmed batch. Skills the target already has are skipped "
+            "automatically. Use for requests like 'give <new> the same skills as "
+            "<existing>' or 'copy skills from X to Y' — resolve BOTH names with "
+            "search_employees first, then call this ONCE. Never writes data; Streamlit "
+            "confirmation is required."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "source_employee_id": {
+                    "type": "string",
+                    "description": "employee whose skills are copied",
+                },
+                "target_employee_id": {
+                    "type": "string",
+                    "description": "employee who receives the skills",
+                },
+            },
+            "required": ["source_employee_id", "target_employee_id"],
+        },
+    },
+
+    {
         "name": "propose_employee_update",
         "description": (
             "Propose an employee field update. "
@@ -732,6 +758,11 @@ MANAGEMENT_DISPATCH = {
         a["employee_id"],
         a["field"],
         a["new_value"],
+    ),
+
+    "propose_clone_skills": lambda a: repo.propose_clone_skills(
+        a["source_employee_id"],
+        a["target_employee_id"],
     ),
 
     "propose_add_skill": lambda a: repo.propose_add_skill(

@@ -184,24 +184,77 @@ def propose_add_project(employee_id: str, project: str, client: str = "",
                         project_type: str = "main") -> dict:
     if not _employee_exists(employee_id):
         raise ValueError(f"employee '{employee_id}' was not found")
-        project = _validate_employee_value("project", project)
-        norm_type = (project_type or "main").strip().lower()
+    project = project.strip()
+    if not project:
+        raise ValueError("project name is required")
+    norm_type = (project_type or "main").strip().lower()
     if norm_type not in {"main", "support"}:
         raise ValueError("project_type must be 'main' or 'support'")
-        duplicate = uc.fetchone(
+    duplicate = uc.fetchone(
         "SELECT 1 FROM employee_projects WHERE employee_id = ? AND lower(project) = lower(?) "
-            "AND lower(COALESCE(project_type, 'main')) = lower(?)",
-            [employee_id, project, norm_type],
-        ).fetchone()
+        "AND lower(COALESCE(project_type, 'main')) = lower(?)",
+        [employee_id, project, norm_type],
+    )
     if duplicate:
-        raise ValueError(f"project '{project}' already exists for {employee_id}")
+        raise ValueError(f"project '{project}' ({norm_type}) already exists for {employee_id}")
     return {
-            "operation": "INSERT", "table": "employee_projects", "employee_id": employee_id,
-            "field": "project", "old_value": None, "new_value": project,
-            "client": client.strip() or None, "technologies": technologies.strip() or None,
-            "role": role.strip() or None, "project_type": norm_type,
-            "requires_confirmation": True,
+        "operation": "INSERT", "table": "employee_projects", "employee_id": employee_id,
+        "field": "project", "old_value": None, "new_value": project,
+        "client": client.strip() or None, "technologies": technologies.strip() or None,
+        "role": role.strip() or None, "project_type": norm_type,
+        "requires_confirmation": True,
+    }
+
+
+def propose_clone_skills(source_employee_id: str, target_employee_id: str) -> dict:
+    """
+    Copy every skill of an existing employee (with its real category and
+    qualifier) to another employee in ONE confirmed batch. Skills the
+    target already has are skipped automatically — the proposal card
+    shows exactly how many will be copied and from whom.
+    """
+    src = (source_employee_id or "").strip()
+    tgt = (target_employee_id or "").strip()
+    if not _employee_exists(src):
+        raise ValueError(f"source employee '{src}' was not found")
+    if not _employee_exists(tgt):
+        raise ValueError(f"target employee '{tgt}' was not found")
+    if src == tgt:
+        raise ValueError("source and target employee are the same")
+    src_name = uc.fetchval("SELECT name FROM employees WHERE employee_id = ?", [src])
+    tgt_name = uc.fetchval("SELECT name FROM employees WHERE employee_id = ?", [tgt])
+
+    source_skills = q(
+        "SELECT skill, category, qualifier FROM employee_skills "
+        "WHERE employee_id = ? ORDER BY skill",
+        [src],
+    )
+    target_skills = q(
+        "SELECT lower(skill) AS skill FROM employee_skills WHERE employee_id = ?",
+        [tgt],
+    )
+    existing = {str(r["skill"]).strip().lower() for _, r in target_skills.iterrows()}
+
+    to_add = [
+        {
+            "skill": str(r["skill"]).strip(),
+            "category": (r["category"] or "Other") if r["category"] else "Other",
+            "qualifier": r["qualifier"],
         }
+        for _, r in source_skills.iterrows()
+        if str(r["skill"]).strip().lower() not in existing
+    ]
+    if not to_add:
+        raise ValueError(
+            f"{tgt_name} ({tgt}) already has every skill of {src_name} ({src}) — nothing to copy"
+        )
+    return {
+        "operation": "CLONE_SKILLS", "table": "employee_skills", "employee_id": tgt,
+        "field": "skills", "old_value": None,
+        "new_value": f"{len(to_add)} skill(s) copied from {src_name} ({src})",
+        "skills": to_add, "source_employee": src,
+        "requires_confirmation": True,
+    }
 
 
 def propose_remove_project(employee_id: str, project: str) -> dict:
@@ -446,6 +499,34 @@ def execute_proposal(proposal: dict) -> dict:
                 "SELECT skill FROM employee_skills WHERE employee_id = ? AND lower(skill) = lower(?)",
                 [employee_id, proposal["new_value"]],
             )
+        
+        elif table == "employee_skills" and operation == "CLONE_SKILLS":
+            # Copy the proposed skill list in one confirmed batch, keeping
+            # each skill's real category. Rows that appeared in the meantime
+            # (duplicate) are skipped, not failed.
+            added = 0
+            for entry in proposal.get("skills", []):
+                skill_name = str(entry.get("skill") or "").strip()
+                if not skill_name:
+                    continue
+                already = uc.fetchone(
+                    "SELECT 1 FROM employee_skills WHERE employee_id = ? AND lower(skill) = lower(?)",
+                    [employee_id, skill_name],
+                )
+                if already:
+                    continue
+                uc.execute(
+                    "INSERT INTO employee_skills (employee_id, skill, category, qualifier, source) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    [employee_id, skill_name, entry.get("category") or "Other",
+                     entry.get("qualifier"), "data_management"],
+                )
+                added += 1
+            if added == 0:
+                raise ValueError("no new skills were copied")
+            verified = int(uc.fetchval(
+                "SELECT COUNT(*) FROM employee_skills WHERE employee_id = ?", [employee_id]
+            ) or 0)
         
         elif table == "employee_skills" and operation == "DELETE":
             uc.execute(

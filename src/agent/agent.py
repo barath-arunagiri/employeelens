@@ -470,6 +470,7 @@ class PeopleLensAgent:
                     "- Request too vague (e.g. 'Add Databricks' with no employee) → ask exactly what is missing ('Which employee should get the Databricks skill?') and offer likely candidates from search results. "
                     "\n\nBATCH REQUESTS:\n"
                     "- For 'add cert to Barath, Nisha, Sanjai' → resolve all three names first, then call the proposal tool once per employee IN THE SAME response. "
+                    "- Skill-copy requests ('give X the same skills as Y', 'copy skills from Y to X', 'Y's skills for X') → resolve BOTH names, then call propose_clone_skills ONCE. Report how many skills will be copied, that duplicates are skipped, and that each skill keeps its existing category. "
                     "- Use parallel tool calls - do not wait for one proposal to complete before creating the next. "
                     "- If a tool returns an error such as 'already exists', that item needs no change: skip it, mention the skip in your final answer, and continue with the remaining items — never abandon the rest of a batch because one item failed. "
                     "\n\nHISTORY QUERIES:\n"
