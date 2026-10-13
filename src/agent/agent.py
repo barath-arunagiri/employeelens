@@ -469,6 +469,7 @@ class PeopleLensAgent:
                     "- No match → say so clearly and show the closest matches if any; never use placeholder IDs. "
                     "- Request too vague (e.g. 'Add Databricks' with no employee) → ask exactly what is missing ('Which employee should get the Databricks skill?') and offer likely candidates from search results. "
                     "\n\nBATCH REQUESTS:\n"
+                    "- Assignment requests ('assign <employee> to/on <project>', '<employee> on <project>', possessive or typo forms like '2020134's on L&T project') → call propose_add_project ONCE. An employee_id given directly needs no search; resolve names with search_employees. project_type defaults to 'main' unless the user says support — state that default in your answer so the user can correct it. "
                     "- For 'add cert to Barath, Nisha, Sanjai' → resolve all three names first, then call the proposal tool once per employee IN THE SAME response. "
                     "- Skill-copy requests ('give X the same skills as Y', 'copy skills from Y to X', 'Y's skills for X') → resolve BOTH names, then call propose_clone_skills ONCE. Report how many skills will be copied, that duplicates are skipped, and that each skill keeps its existing category. "
                     "- Use parallel tool calls - do not wait for one proposal to complete before creating the next. "

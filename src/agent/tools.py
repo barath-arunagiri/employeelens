@@ -565,8 +565,12 @@ MANAGEMENT_TOOLS = [
     {
         "name": "propose_add_project",
         "description": (
-            "Propose assigning an employee to a new project; "
-            "confirmation is required."
+            "Propose assigning an employee to a project. Handles all assignment "
+            "phrasings: 'assign <employee> to/on <project>', '<employee> on "
+            "<project>', possessive/typo forms like \"2020134's on L&T project\". "
+            "An employee_id given directly needs no search_employees call. "
+            "project_type defaults to 'main' unless the user says support — "
+            "state that default in your answer. Confirmation is required."
         ),
         "input_schema": {
             "type": "object",
@@ -578,7 +582,12 @@ MANAGEMENT_TOOLS = [
                 "role": {"type": "string"},
                 "project_type": {
                     "type": "string",
-                    "description": "Project involvement type: 'main' or 'support'. Default is 'main'.",
+                    "description": (
+                        "Assignment type. DEFAULT is 'main' — use it whenever the "
+                        "user just says assign without specifying a type, and say "
+                        "so in your answer so they can correct it. Only use "
+                        "'support' when the user explicitly says support."
+                    ),
                     "enum": ["main", "support"],
                 },
             },
