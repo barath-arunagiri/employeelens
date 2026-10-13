@@ -446,12 +446,15 @@ MANAGEMENT_TOOLS = [
     {
         "name": "propose_clone_skills",
         "description": (
-            "Copy ALL skills of one employee (with their real categories) to another "
-            "employee in ONE confirmed batch. Skills the target already has are skipped "
-            "automatically. Use for requests like 'give <new> the same skills as "
-            "<existing>' or 'copy skills from X to Y' — resolve BOTH names with "
-            "search_employees first, then call this ONCE. Never writes data; Streamlit "
-            "confirmation is required."
+            "Copy skills of one employee (with their real categories) to another "
+            "employee in ONE confirmed batch. Use for requests like 'give <new> "
+            "the same skills as <existing>' or 'copy skills from X to Y'. If the "
+            "user names specific categories ('copy only the AI and Language skills "
+            "from X to Y'), pass them in categories and copy ONLY those — never "
+            "silently copy every category when the user restricted to some. "
+            "Skills the target already has are skipped automatically. Resolve BOTH "
+            "names with search_employees first, then call this ONCE. Never writes "
+            "data; Streamlit confirmation is required."
         ),
         "input_schema": {
             "type": "object",
@@ -463,6 +466,17 @@ MANAGEMENT_TOOLS = [
                 "target_employee_id": {
                     "type": "string",
                     "description": "employee who receives the skills",
+                },
+                "categories": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Optional category filter — copy ONLY the source's skills "
+                        "in these categories, e.g. ['AI', 'Language']. Omit to "
+                        "copy all categories. Categories are matched "
+                        "case-insensitively; if the source has no skills in the "
+                        "requested categories the tool lists what they DO have."
+                    ),
                 },
             },
             "required": ["source_employee_id", "target_employee_id"],
@@ -772,6 +786,7 @@ MANAGEMENT_DISPATCH = {
     "propose_clone_skills": lambda a: repo.propose_clone_skills(
         a["source_employee_id"],
         a["target_employee_id"],
+        a.get("categories") or None,
     ),
 
     "propose_add_skill": lambda a: repo.propose_add_skill(

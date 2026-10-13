@@ -206,12 +206,14 @@ def propose_add_project(employee_id: str, project: str, client: str = "",
     }
 
 
-def propose_clone_skills(source_employee_id: str, target_employee_id: str) -> dict:
+def propose_clone_skills(source_employee_id: str, target_employee_id: str,
+                       categories: list[str] | None = None) -> dict:
     """
-    Copy every skill of an existing employee (with its real category and
-    qualifier) to another employee in ONE confirmed batch. Skills the
-    target already has are skipped automatically — the proposal card
-    shows exactly how many will be copied and from whom.
+    Copy skills of an existing employee (with their real category and
+    qualifier) to another employee in ONE confirmed batch — optionally
+    restricted to specific categories (e.g. only AI and Language).
+    Skills the target already has are skipped automatically; the proposal
+    card shows exactly how many will be copied and from whom.
     """
     src = (source_employee_id or "").strip()
     tgt = (target_employee_id or "").strip()
@@ -229,6 +231,28 @@ def propose_clone_skills(source_employee_id: str, target_employee_id: str) -> di
         "WHERE employee_id = ? ORDER BY skill",
         [src],
     )
+
+    if categories:
+        wanted = {str(c).strip().lower() for c in categories if str(c).strip()}
+        if not wanted:
+            raise ValueError("categories filter is empty")
+        matched = source_skills[
+            source_skills["category"]
+            .astype(str)
+            .str.strip()
+            .str.lower()
+            .isin(wanted)
+        ]
+        if len(matched) == 0:
+            available = sorted({
+                str(c).strip() for c in source_skills["category"].dropna().unique()
+            })
+            raise ValueError(
+                f"{src_name} ({src}) has no skills in "
+                f"{sorted(categories)} — their categories are: {', '.join(available)}"
+            )
+        source_skills = matched
+
     target_skills = q(
         "SELECT lower(skill) AS skill FROM employee_skills WHERE employee_id = ?",
         [tgt],
@@ -245,13 +269,22 @@ def propose_clone_skills(source_employee_id: str, target_employee_id: str) -> di
         if str(r["skill"]).strip().lower() not in existing
     ]
     if not to_add:
+        scope = (", ".join(str(c) for c in categories)) if categories else "all"
         raise ValueError(
-            f"{tgt_name} ({tgt}) already has every skill of {src_name} ({src}) — nothing to copy"
+            f"{tgt_name} ({tgt}) already has every {scope} skill of "
+            f"{src_name} ({src}) — nothing to copy"
         )
+    if categories:
+        label = (
+            f"{len(to_add)} {', '.join(str(c) for c in categories)} skill(s) "
+            f"copied from {src_name} ({src})"
+        )
+    else:
+        label = f"{len(to_add)} skill(s) copied from {src_name} ({src})"
     return {
         "operation": "CLONE_SKILLS", "table": "employee_skills", "employee_id": tgt,
         "field": "skills", "old_value": None,
-        "new_value": f"{len(to_add)} skill(s) copied from {src_name} ({src})",
+        "new_value": label,
         "skills": to_add, "source_employee": src,
         "requires_confirmation": True,
     }
