@@ -840,7 +840,29 @@ def find_employees(skills: list[str] | None = None,
     )
 
 
-def find_employees_by_project(project: str) -> pd.DataFrame:
+def find_employees_by_project(project: str, project_type: str | None = None) -> pd.DataFrame:
+    """
+    Assignments matched on project or client name.
+
+    project_type narrows to 'main' or 'support' — the real main/support
+    split used in employee_projects (the role column is unused/NULL).
+    """
+    if project_type:
+        norm_type = project_type.strip().lower()
+        if norm_type not in {"main", "support"}:
+            raise ValueError("project_type must be 'main' or 'support'")
+        return q(
+            """
+            SELECT e.employee_id, e.name, p.project, p.client, p.technologies
+            FROM employee_projects p
+            JOIN employees e USING (employee_id)
+            WHERE (lower(p.project) LIKE '%' || lower(?) || '%'
+                   OR lower(p.client)  LIKE '%' || lower(?) || '%')
+              AND lower(COALESCE(p.project_type, 'main')) = ?
+            ORDER BY e.name
+            """,
+            [project, project, norm_type],
+        )
     return q(
         """
         SELECT e.employee_id, e.name, p.project, p.client, p.technologies

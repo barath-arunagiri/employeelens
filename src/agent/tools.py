@@ -81,13 +81,27 @@ TOOLS = [
     {
         "name": "find_employees_by_project",
         "description": (
-            "Everyone assigned to a project, matched on project name or client name."
+            "Everyone assigned to a project, matched on project name or client name. "
+            "Every assignment has a project_type of 'main' or 'support'. When the user "
+            "asks who SUPPORTS a project or who the MAIN/lead people on it are, pass "
+            "project_type — do not return both groups and hope the user sorts it out. "
+            "Names are fuzzy: 'ACT' matches 'ACT Power'."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "project": {
                     "type": "string",
+                },
+                "project_type": {
+                    "type": "string",
+                    "enum": ["main", "support"],
+                    "description": (
+                        "Optional assignment type. Use 'support' for questions like "
+                        "'who is support on <project>' and 'main' for 'who is on "
+                        "<project>' in the lead/primary sense. Omit only when the "
+                        "user wants everyone regardless of type."
+                    ),
                 },
             },
             "required": ["project"],
@@ -360,7 +374,9 @@ DISPATCH = {
     ),
 
     "find_employees_by_project": lambda a: _frame(
-        repo.find_employees_by_project(a["project"])
+        repo.find_employees_by_project(
+            a["project"], a.get("project_type") or None
+        )
     ),
 
     "find_employees_by_team": lambda a: _frame(

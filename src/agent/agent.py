@@ -188,6 +188,8 @@ ROUTING EXAMPLES
 - "Who knows Python?" -> find_employees_by_skill
 - "Who knows Python and SQL?" -> find_employees with both skills
 - "Who works on <project>?" -> find_employees_by_project
+- "Who is support on <project>?" -> find_employees_by_project with project_type=support; "who are the main people on <project>?" -> project_type=main
+- Project names are fuzzy: 'ACT' or 'ACT Power' both match; never treat a partial name as unknown without searching
 - "Who has <X> certification?" -> find_employees_by_certification
 - "Who reports to <name>?" -> search_employees for the manager, then get_direct_reports
 - "How many employees know <skill>?" -> find_employees_by_skill, report row_count, never estimate
