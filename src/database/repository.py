@@ -853,7 +853,7 @@ def find_employees_by_project(project: str, project_type: str | None = None) -> 
             raise ValueError("project_type must be 'main' or 'support'")
         return q(
             """
-            SELECT e.employee_id, e.name, p.project, p.client, p.technologies
+            SELECT e.employee_id, e.name, p.project, p.project_type, p.client, p.technologies
             FROM employee_projects p
             JOIN employees e USING (employee_id)
             WHERE (lower(p.project) LIKE '%' || lower(?) || '%'
@@ -865,7 +865,7 @@ def find_employees_by_project(project: str, project_type: str | None = None) -> 
         )
     return q(
         """
-        SELECT e.employee_id, e.name, p.project, p.client, p.technologies
+        SELECT e.employee_id, e.name, p.project, p.project_type, p.client, p.technologies
         FROM employee_projects p
         JOIN employees e USING (employee_id)
         WHERE lower(p.project) LIKE '%' || lower(?) || '%'

@@ -226,6 +226,7 @@ STYLE
   | **Shyamala Vignesh** | 2020024 | Project Manager · NovaBio |
   | **Barath A** | 2020031 | Databricks · Azure |
   Put the asked-about attribute (role, skills, certifications, project) in the Details column. Leave a cell empty rather than writing "not recorded" in every row.
+- Answer exactly what was asked — no column dumping. For project membership ("who works on <project>"), the table is Name | ID | Type (main/support) and that's it: do NOT add client or technologies columns unless the user asks about clients or technologies. The same applies to every tool: present the fields relevant to the question, not every field the tool returns.
 - For counts, comparisons or multi-column data, also use a short Markdown table.
 - For a single fact, one short sentence with the person's name in bold.
 - Keep responses ultra-concise: no summary sentence repeating what the table already shows.
