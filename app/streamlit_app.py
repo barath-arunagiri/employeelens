@@ -180,6 +180,23 @@ st.markdown("""
     pre {
         color: #033c67 !important;
     }
+    /* Data tables: size columns to content instead of stretching the
+       first column across the full container width */
+    .stMarkdown table {
+        width: auto;
+        min-width: 30%;
+        table-layout: auto;
+    }
+    .stMarkdown th,
+    .stMarkdown td {
+        white-space: nowrap;
+        padding: 6px 18px 6px 10px;
+    }
+    .stMarkdown th:first-child,
+    .stMarkdown td:first-child {
+        width: 1%;
+    }
+
 </style>
 """, unsafe_allow_html=True)
 
