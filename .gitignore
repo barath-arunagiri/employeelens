@@ -7,3 +7,6 @@ __pycache__/
 .streamlit/secrets.toml
 *.duckdb
 *.duckdb.wal
+
+# Employee data stays out of Git (local files are kept; Phase 1)
+data/

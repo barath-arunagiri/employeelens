@@ -16,7 +16,9 @@ from datetime import datetime, timezone
 
 import pandas as pd
 
-from src.database import uc_connection as uc
+from src.database import uc_connection as uc  # noqa: E402
+from src.database.sql_guard import guard_select  # noqa: E402  # strict run_sql parse
+from src.database.sql_guard import guard_select
 
 
 def q(sql: str, params: list | None = None) -> pd.DataFrame:
@@ -505,8 +507,14 @@ def propose_update_manager(employee_id: str, manager: str) -> dict:
     }
 
 
-def _audit(proposal: dict, status: str, error_message: str | None = None) -> None:
-    """Write audit entry to Unity Catalog."""
+def _audit(proposal: dict, status: str, error_message: str | None = None,
+           confirmed_by: str = "unknown") -> None:
+    """Write audit entry to Unity Catalog.
+
+    confirmed_by carries the real user identity forwarded by the app
+    (x-forwarded-email) so the audit trail names the human who approved
+    the change, not a service label.
+    """
     uc.write_audit(
         operation=proposal.get("operation", ""),
     employee_id=proposal.get("employee_id", ""),
@@ -516,13 +524,15 @@ def _audit(proposal: dict, status: str, error_message: str | None = None) -> Non
         new_value=proposal.get("new_value"),
         status=status,
         error_message=error_message,
+        confirmed_by=confirmed_by,
     )
 
 
-def execute_proposal(proposal: dict) -> dict:
+def execute_proposal(proposal: dict, confirmed_by: str = "unknown") -> dict:
     """Execute a proposal: write directly to Unity Catalog Delta tables.
-    
-    No DuckDB, no caching — writes go straight to Delta.
+
+    confirmed_by is the real user identity that approved the change; it
+    is recorded on the audit entry.
     """
     if not proposal.get("requires_confirmation"):
         raise ValueError("write proposal requires confirmation")
@@ -746,23 +756,27 @@ def execute_proposal(proposal: dict) -> dict:
         else:
             raise ValueError("unsupported write proposal")
         
-        _audit(proposal, "SUCCESS")
+        _audit(proposal, "SUCCESS", confirmed_by=confirmed_by)
         return {"status": "SUCCESS", "proposal": proposal, "verified_value": verified}
     
     except Exception as exc:
-        _audit(proposal, "ERROR", str(exc))
+        _audit(proposal, "ERROR", str(exc), confirmed_by=confirmed_by)
         raise
 
 
-def execute_proposals(proposals: list[dict]) -> list[dict]:
-    """Execute multiple proposals sequentially via Unity Catalog."""
+def execute_proposals(proposals: list[dict], confirmed_by: str = "unknown") -> list[dict]:
+    """Execute multiple proposals sequentially via Unity Catalog.
+
+    confirmed_by: the real user identity forwarded by the app — written to
+    every audit entry produced by this batch.
+    """
     if not proposals or any(not p.get("requires_confirmation") for p in proposals):
         raise ValueError("all write proposals require confirmation")
     
     results = []
     for proposal in proposals:
         try:
-            results.append(execute_proposal(proposal))
+            results.append(execute_proposal(proposal, confirmed_by=confirmed_by))
         except Exception as exc:  # noqa: BLE001
             # One failed item (e.g. 'already exists') must not abort the
             # rest of the batch — record it and continue.
@@ -1188,24 +1202,15 @@ Notes:
 - department, joining_date, location, employment_status may be NULL for most employees; do not rely on them
 """
 
-_FORBIDDEN = ("insert", "update", "delete", "drop", "create", "alter", "attach",
-              "copy", "export", "install", "load", "pragma", "call", "set ")
-
-
 def run_sql(sql: str, limit: int = 200) -> pd.DataFrame:
     """
-    Run a read-only SELECT. This is the catch-all for questions the fixed
-    tools do not cover. The connection is already read-only; these checks
-    stop anything that is not a plain query from being attempted at all.
+    Run a strictly-guarded read-only SELECT — the catch-all for questions
+    the fixed tools do not cover.
+
+    src/database/sql_guard.py parses the SQL (sqlglot) and allows exactly
+    one SELECT over the workspace.employeelens business tables (the audit
+    table is excluded — audit questions use get_audit_history), always
+    enforces a LIMIT, and returns fully-qualified SQL. Anything that is not
+    a single safe SELECT is rejected before it reaches the warehouse.
     """
-    cleaned = sql.strip().rstrip(";")
-    low = cleaned.lower()
-    if not (low.startswith("select") or low.startswith("with")):
-        raise ValueError("only SELECT queries are allowed")
-    if ";" in cleaned:
-        raise ValueError("only one statement at a time")
-    if any(word in low for word in _FORBIDDEN):
-        raise ValueError("only read-only queries are allowed")
-    if " limit " not in low:
-        cleaned = f"{cleaned} LIMIT {limit}"
-    return q(cleaned)
+    return q(guard_select(sql, default_limit=limit))

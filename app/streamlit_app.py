@@ -18,9 +18,26 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from src.config import (APP_NAME, DATA_MANAGEMENT_ENABLED, DATA_MANAGEMENT_PIN, 
+from src.config import (APP_NAME, DATA_MANAGEMENT_ADMINS, DATA_MANAGEMENT_ENABLED,
                         DATABRICKS_MODEL, REPORTS_DIR)  # noqa: E402
 from src.database import repository as repo                                       # noqa: E402
+
+
+def get_user_email() -> str:
+    """
+    Real user identity forwarded by Databricks Apps.
+
+    Databricks Apps injects the authenticated user's email in the
+    x-forwarded-email header. Returns '' when the identity is not
+    available so callers can fail closed.
+    """
+    try:
+        headers = st.context.headers or {}
+        email = (headers.get("x-forwarded-email")
+                 or headers.get("x-forwarded-user") or "").strip()
+        return email
+    except Exception:  # noqa: BLE001
+        return ""
 
 st.set_page_config(page_title=APP_NAME, page_icon="🔎", layout="wide")
 
@@ -483,19 +500,25 @@ with management_tab:
     st.markdown("#### Data Management")
     st.caption("Use one natural-language request for a change or read-only audit history. Changes require confirmation.")
 
-    admin_ok = DATA_MANAGEMENT_ENABLED
-    if DATA_MANAGEMENT_PIN:
-        if not st.session_state.get("management_authenticated"):
-            entered_pin = st.text_input("Admin PIN", type="password", key="management_pin")
-            if st.button("Unlock Data Management", key="unlock_management"):
-                if entered_pin == DATA_MANAGEMENT_PIN:
-                    st.session_state.management_authenticated = True
-                    st.rerun()
-                st.error("Invalid admin PIN.")
-            admin_ok = False
+    # Admin-only, fail closed: writes require a configured admin list AND a
+    # verified user identity from the Databricks Apps forwarded header.
+    user_email = get_user_email()
+    admin_ok = (
+        DATA_MANAGEMENT_ENABLED
+        and bool(DATA_MANAGEMENT_ADMINS)
+        and bool(user_email)
+        and user_email.lower() in DATA_MANAGEMENT_ADMINS
+    )
 
     if not admin_ok:
-        st.info("Data Management is locked. Set DATA_MANAGEMENT_ENABLED=true and use the configured admin PIN.")
+        if not DATA_MANAGEMENT_ADMINS:
+            st.info("Data Management is locked: no admin identities are configured "
+                    "(DATA_MANAGEMENT_ADMINS is empty). Writes are disabled.")
+        elif not user_email:
+            st.info("Data Management is locked: no verified user identity was "
+                    "forwarded by Databricks Apps. Writes are disabled.")
+        else:
+            st.info(f"Data Management is admin-only. You are signed in as {user_email}.")
     else:
         request = st.text_area(
             "Describe the change you want to make",
@@ -621,14 +644,16 @@ with management_tab:
             )
             confirm_col, cancel_col = st.columns(2)
             if confirm_col.button(action, type="primary", key="confirm_management"):
+                confirmed_email = get_user_email() or "unknown"
                 try:
-                    results = repo.execute_proposals(proposals)
+                    results = repo.execute_proposals(proposals, confirmed_by=confirmed_email)
                     st.cache_data.clear()  # writes are live: refresh every page immediately
                     ok = [r for r in results if r.get("status") == "SUCCESS"]
                     failed = [r for r in results if r.get("status") != "SUCCESS"]
                     if ok:
                         st.success(
-                            f"SUCCESS: {len(ok)} change(s) committed and verified."
+                            f"SUCCESS: {len(ok)} change(s) committed and verified "
+                            f"by {confirmed_email}."
                         )
                     for r in failed:
                         p = r.get("proposal", {})

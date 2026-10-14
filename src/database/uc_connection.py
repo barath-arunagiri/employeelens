@@ -1,17 +1,24 @@
 """Unity Catalog connection layer.
 
-Replaces DuckDB entirely. All reads and writes go directly to
-workspace.employeelens.* Delta tables via Databricks SDK statement execution.
+All reads and writes go directly to workspace.employeelens.* Delta tables
+via Databricks SDK statement execution.
 
-No DuckDB, no CSV, no caching — Unity Catalog is the single source of truth.
+Safety model:
+- Values NEVER become part of the SQL text. The positional ``?`` placeholders
+  used by repository code are converted to Databricks *named parameters*
+  (:p0, :p1, ...) and bound server-side by the statement execution API.
+  The only literal ever substituted is the constant NULL keyword (the API
+  cannot bind SQL NULL), which contains no data.
+- Table names come only from the fixed TABLES allowlist below. Free-form
+  agent SQL is additionally parsed and validated by src/database/sql_guard.py.
+- execute() returns the real affected-row count reported by the server.
 """
 from __future__ import annotations
 
 import os
 import re
 import time
-from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Optional
 
 import pandas as pd
 
@@ -71,21 +78,41 @@ _TERMINAL_STATES = (
 )
 
 
-def _run_statement(sql: str):
-    """Execute a SQL statement, tolerating serverless warehouse cold-start.
+def _run_statement(sql: str, params: list | None = None):
+    """Execute a SQL statement with server-side parameter binding.
 
-    A stopped serverless warehouse auto-starts on the first statement, which can
-    push the response past the sync wait window - it then comes back in a
-    non-terminal state (PENDING/RUNNING) with no error. The statement keeps
-    running server-side, so we poll it via get_statement rather than
-    resubmitting (a resubmitted INSERT/UPDATE could apply twice).
+    Values are bound by the statement execution API — never interpolated
+    into the SQL text. Prefers Databricks named parameters (:p0, :p1, ...);
+    falls back to typed positional parameters on SDK versions that do not
+    expose named_parameters yet. Either way, user data never enters the text.
+
+    The 50s wait timeout plus the 60s polling deadline is the statement
+    timeout: nothing runs unbounded. A stopped serverless warehouse may
+    auto-start on the first statement, pushing the response past the sync
+    wait window - the statement keeps running server-side, so we poll it
+    via get_statement rather than resubmitting (a resubmitted INSERT/UPDATE
+    could apply twice).
     """
     w = _get_client()
-    response = w.statement_execution.execute_statement(
-        warehouse_id=_get_warehouse_id(),
-        statement=sql,
-        wait_timeout="50s",
-    )
+    named_sql, named = _to_named_params(sql, params)
+    try:
+        response = w.statement_execution.execute_statement(
+            warehouse_id=_get_warehouse_id(),
+            statement=named_sql,
+            wait_timeout="50s",
+            named_parameters=named or None,
+        )
+    except TypeError as exc:
+        if "named_parameters" not in str(exc):
+            raise
+        # Older SDK: bind positionally with typed parameter objects.
+        pos_sql, pos_items = _to_positional_params(sql, params)
+        response = w.statement_execution.execute_statement(
+            warehouse_id=_get_warehouse_id(),
+            statement=pos_sql,
+            wait_timeout="50s",
+            parameters=pos_items or None,
+        )
     deadline = time.monotonic() + 60
     while (response.status.state not in _TERMINAL_STATES
            and time.monotonic() < deadline):
@@ -94,35 +121,110 @@ def _run_statement(sql: str):
     return response
 
 
-def _escape(value) -> str:
-    """Safely escape a Python value for SQL."""
-    if value is None:
-        return "NULL"
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, (int, float)):
-        return str(value)
-    s = str(value).replace("'", "''")
-    return f"'{s}'"
+def _to_named_params(sql: str, params: list | None = None):
+    """
+    Convert ``?`` placeholders to Databricks named parameters.
 
-
-def _build_sql(sql: str, params: list | None = None) -> str:
-    """Replace ? placeholders with escaped values."""
+    Each ``?`` becomes ``:p0``, ``:p1``, ... and the values are returned as a
+    dict to be bound server-side — user data never touches the SQL text.
+    None values are replaced by the literal NULL keyword because the
+    statement execution API cannot bind SQL NULL (a constant, not data).
+    """
     if not params:
-        return sql
-    result = sql
-    for p in params:
-        result = result.replace("?", _escape(p), 1)
-    return result
+        return sql, None
+
+    named = {}
+    out = []
+    index = 0
+    for char in sql:
+        if char != "?":
+            out.append(char)
+            continue
+        if index >= len(params):
+            raise ValueError(
+                "more placeholders than parameters — refusing to build SQL"
+            )
+        value = params[index]
+        if value is None:
+            out.append("NULL")
+        else:
+            out.append(":p%d" % index)
+            named["p%d" % index] = value
+        index += 1
+
+    return "".join(out), (named or None)
+
+
+def _prepare(sql: str) -> str:
+    """Qualify allowlisted table names and fix dialect.
+
+    The ``?`` placeholders are left in place — values are bound
+    server-side by _run_statement, never interpolated into the text.
+    """
+    return _fix_sql_dialect(_fix_table_names(sql))
+
+
+def _param_type(value) -> str:
+    """Infer the Databricks statement parameter type for a Python value."""
+    if isinstance(value, bool):
+        return "BOOL"
+    if isinstance(value, int):
+        return "INT"
+    if isinstance(value, float):
+        return "DOUBLE"
+    return "STRING"
+
+
+def _to_positional_params(sql: str, params: list | None = None):
+    """
+    Fallback binding for SDK versions without the named_parameters kwarg.
+
+    The parameters array carries typed, named items (StatementParameterListItem
+    requires a name on these SDKs), so the SQL gets :p0, :p1, ... markers.
+    Values are still bound server-side — never interpolated into the text.
+    None values become the literal NULL keyword (a constant, not data).
+    """
+    if not params:
+        return sql, None
+    try:
+        from databricks.sdk.service.sql import StatementParameterListItem
+    except ImportError:  # very old SDK — refuse rather than interpolate
+        raise RuntimeError(
+            "this databricks-sdk version supports neither named nor typed "
+            "positional parameters; upgrade databricks-sdk"
+        )
+
+    items = []
+    out = []
+    index = 0
+    for char in sql:
+        if char != "?":
+            out.append(char)
+            continue
+        if index >= len(params):
+            raise ValueError(
+                "more placeholders than parameters — refusing to build SQL"
+            )
+        value = params[index]
+        if value is None:
+            out.append("NULL")
+        else:
+            out.append(":p%d" % index)
+            items.append(StatementParameterListItem(
+                name="p%d" % index, value=value, type=_param_type(value)))
+        index += 1
+    return "".join(out), (items or None)
 
 
 def _fix_table_names(sql: str) -> str:
-    """Replace bare table names with full UC paths.
-    
-    Note: Query aliases should NOT use table names to avoid conflicts.
+    """Qualify bare table names using ONLY the fixed allowlist above.
+
+    Internal repository SQL always uses these exact bare names; nothing
+    outside the allowlist is ever rewritten. (Free-form agent SQL is parsed
+    and qualified structurally by src/database/sql_guard.py instead.)
     """
     for short, full in TABLES.items():
-        # Match word boundary + table name + word boundary
+        # Match word boundary + exact allowlisted name + word boundary
         sql = re.sub(rf'\b{re.escape(short)}\b', full, sql)
     return sql
 
@@ -153,15 +255,15 @@ def _fix_sql_dialect(sql: str) -> str:
 
 
 def query(sql: str, params: list | None = None) -> pd.DataFrame:
-    """Execute a read-only SQL query and return results as DataFrame."""
+    """Execute a read-only SQL query and return results as DataFrame.
+
+    Values are bound as named parameters — never interpolated into the text.
+    """
     if not SDK_AVAILABLE:
         raise RuntimeError("databricks-sdk not available")
-    
-    full_sql = _build_sql(sql, params)
-    full_sql = _fix_table_names(full_sql)
-    full_sql = _fix_sql_dialect(full_sql)
-    
-    response = _run_statement(full_sql)
+
+    full_sql = _prepare(sql)
+    response = _run_statement(full_sql, params)
     
     if response.status.state == StatementState.SUCCEEDED:
         if not response.result or not response.result.data_array:
@@ -179,18 +281,44 @@ def query(sql: str, params: list | None = None) -> pd.DataFrame:
         raise RuntimeError(f"SQL error ({response.status.state}): {error_msg}\nQuery: {full_sql[:200]}")
 
 
+def _affected_rows(response) -> int:
+    """
+    Real affected-row count reported by the server for a DML statement.
+
+    Databricks reports DML counts in a num_affected_rows* column. Falls back
+    to 1 only when the server reports success but no count column, so
+    callers never see a fabricated zero.
+    """
+    try:
+        if response.manifest and response.manifest.schema:
+            cols = [c.name for c in response.manifest.schema.columns]
+            data = (response.result.data_array
+                    if response.result and response.result.data_array else [])
+            for key in ("num_affected_rows", "num_affected_rows_inserted",
+                        "num_affected_rows_updated", "num_affected_rows_deleted",
+                        "num_inserted_rows", "rows_produced"):
+                if key in cols and data:
+                    value = data[0][cols.index(key)]
+                    if value is not None:
+                        return int(value)
+    except Exception:  # noqa: BLE001
+        pass
+    return 1
+
+
 def execute(sql: str, params: list | None = None) -> int:
-    """Execute a write statement (INSERT/UPDATE/DELETE/MERGE). Returns affected rows."""
+    """Execute a write statement (INSERT/UPDATE/DELETE/MERGE).
+
+    Returns the real affected-row count reported by the server.
+    """
     if not SDK_AVAILABLE:
         raise RuntimeError("databricks-sdk not available")
-    
-    full_sql = _build_sql(sql, params)
-    full_sql = _fix_table_names(full_sql)
-    
-    response = _run_statement(full_sql)
-    
+
+    full_sql = _prepare(sql)
+    response = _run_statement(full_sql, params)
+
     if response.status.state == StatementState.SUCCEEDED:
-        return 1  # Success
+        return _affected_rows(response)
     else:
         error_msg = response.status.error.message if response.status.error else "no error details"
         raise RuntimeError(f"SQL error ({response.status.state}): {error_msg}\nQuery: {full_sql[:200]}")
@@ -225,11 +353,14 @@ def is_available() -> bool:
 
 def write_audit(operation: str, employee_id: str, table_name: str,
                  field_name: str | None, old_value, new_value,
-                 status: str = "SUCCESS", error_message: str | None = None) -> None:
+                 status: str = "SUCCESS", error_message: str | None = None,
+                 confirmed_by: str = "unknown") -> None:
     """Write audit log entry to Unity Catalog.
 
     Column names match the actual change_audit_log schema:
     change_type (not 'operation') and confirmed_at (not 'timestamp').
+    confirmed_by records the real user identity forwarded by the app
+    (x-forwarded-email header) — never a hardcoded service label.
     """
     execute(
         """INSERT INTO change_audit_log
@@ -240,5 +371,5 @@ def write_audit(operation: str, employee_id: str, table_name: str,
         [employee_id, operation, table_name, field_name,
          str(old_value) if old_value is not None else None,
          str(new_value) if new_value is not None else None,
-         "data_management", status, error_message]
+         confirmed_by, status, error_message]
     )

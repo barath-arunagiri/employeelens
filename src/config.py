@@ -50,6 +50,13 @@ DATABRICKS_MODELS = [
 # Legacy single-model config (for backward compatibility)
 DATABRICKS_MODEL = os.environ.get("DATABRICKS_MODEL", DATABRICKS_MODELS[0])
 DATA_MANAGEMENT_ENABLED = os.environ.get("DATA_MANAGEMENT_ENABLED", "true").lower() == "true"
+# Admin identities allowed to use Data Management (comma-separated emails,
+# matched against the user identity Databricks Apps forwards in the
+# x-forwarded-email header). Empty list = writes disabled (fail closed).
+DATA_MANAGEMENT_ADMINS = [
+    a.strip().lower() for a in os.environ.get("DATA_MANAGEMENT_ADMINS", "").split(",")
+    if a.strip()
+]
 DATA_MANAGEMENT_PIN = os.environ.get("DATA_MANAGEMENT_PIN", "")
 
 MAX_TOOL_ROUNDS = 6

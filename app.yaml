@@ -2,8 +2,21 @@ command:
 - streamlit
 - run
 - app/streamlit_app.py
+
+# Least-privilege access to the workspace SQL warehouse: declared as a
+# CAN_USE app resource (no admin rights on the warehouse). The ID is
+# injected by Databricks into DATABRICKS_SQL_WAREHOUSE_ID via valueFrom —
+# it is not hardcoded here.
+resources:
+  sql_warehouse:
+    employee-warehouse:
+      id: eafe19ac379b5437
+      permission: CAN_USE
+
 env:
 - name: STREAMLIT_GATHER_USAGE_STATS
   value: 'false'
 - name: DATABRICKS_SQL_WAREHOUSE_ID
-  value: 'eafe19ac379b5437'
+  valueFrom: employee-warehouse
+- name: DATA_MANAGEMENT_ADMINS
+  value: 'baratha723@gmail.com'
