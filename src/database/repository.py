@@ -495,7 +495,7 @@ def propose_delete_certification(employee_id: str, certification: str) -> dict:
         "SELECT certification FROM employee_certifications "
             "WHERE employee_id = ? AND lower(certification) = lower(?) LIMIT 1",
             [employee_id, certification.strip()],
-        ).fetchone()
+        )
     if row is None:
         raise ValueError(f"certification '{certification}' was not found for {employee_id}")
     return {
@@ -570,6 +570,73 @@ def propose_update_manager(employee_id: str, manager: str) -> dict:
         "field": "reporting_id", "old_value": current[0] if current else None,
         "old_manager_name": current[1] if current else None,
         "new_value": reporting_id, "new_manager_name": manager_name,
+        "requires_confirmation": True,
+    }
+
+
+def propose_update_certification(employee_id: str, certification: str,
+                                 new_certification: str = "",
+                                 vendor: str = "") -> dict:
+    """Propose renaming a certification and/or changing its vendor."""
+    if not _employee_exists(employee_id):
+        raise ValueError(f"employee '{employee_id}' was not found")
+    row = uc.fetchone(
+        "SELECT certification, vendor FROM employee_certifications "
+            "WHERE employee_id = ? AND lower(certification) = lower(?) LIMIT 1",
+        [employee_id, certification.strip()],
+    )
+    if row is None:
+        raise ValueError(f"certification '{certification}' was not found for {employee_id}")
+    old_name, old_vendor = row[0], row[1]
+    new_name = (_validate_employee_value("certification", new_certification)
+                if (new_certification or "").strip() else old_name)
+    new_vendor = (vendor or "").strip() or old_vendor
+    if new_name == old_name and new_vendor == old_vendor:
+        raise ValueError("nothing to update: give a new certification name or vendor")
+    return {
+        "operation": "UPDATE", "table": "employee_certifications", "employee_id": employee_id,
+        "certification": old_name, "field": "certification",
+        "old_value": old_name, "old_vendor": old_vendor,
+        "new_value": new_name, "new_vendor": new_vendor,
+        "requires_confirmation": True,
+    }
+
+
+def propose_update_project_client(employee_id: str, project: str, client: str) -> dict:
+    """Propose changing the client for an employee's project."""
+    if not _employee_exists(employee_id):
+        raise ValueError(f"employee '{employee_id}' was not found")
+    row = uc.fetchone(
+        "SELECT client FROM employee_projects WHERE employee_id = ? "
+            "AND lower(project) = lower(?) LIMIT 1",
+        [employee_id, project.strip()],
+    )
+    if row is None:
+        raise ValueError(f"project '{project}' was not found for {employee_id}")
+    return {
+        "operation": "UPDATE", "table": "employee_projects", "employee_id": employee_id,
+        "project": project.strip(), "field": "client", "old_value": row[0],
+        "new_value": _validate_employee_value("client", client),
+        "requires_confirmation": True,
+    }
+
+
+def propose_remove_manager(employee_id: str) -> dict:
+    """Propose clearing an employee's reporting line (their manager link)."""
+    if not _employee_exists(employee_id):
+        raise ValueError(f"employee '{employee_id}' was not found")
+    current = uc.fetchone(
+        "SELECT m.reporting_id, e.name FROM employee_managers m "
+        "JOIN employees e ON e.employee_id = m.reporting_id "
+        "WHERE m.employee_id = ? ORDER BY e.name LIMIT 1",
+        [employee_id],
+    )
+    if current is None:
+        raise ValueError(f"no manager is set for {employee_id}")
+    return {
+        "operation": "DELETE", "table": "employee_managers", "employee_id": employee_id,
+        "field": "reporting_id", "old_value": current[0],
+        "old_manager_name": current[1], "new_value": None,
         "requires_confirmation": True,
     }
 
@@ -819,6 +886,45 @@ def execute_proposal(proposal: dict, confirmed_by: str = "unknown") -> dict:
                 "SELECT reporting_id FROM employee_managers WHERE employee_id = ? AND reporting_id = ?",
                 [employee_id, reporting_id],
             )
+        
+        elif table == "employee_certifications" and operation == "UPDATE":
+            old_name = proposal["old_value"]
+            new_name = _validate_employee_value("certification", proposal["new_value"])
+            uc.execute(
+                "UPDATE employee_certifications SET certification = ?, vendor = ? "
+                "WHERE employee_id = ? AND lower(certification) = lower(?)",
+                [new_name, proposal.get("new_vendor"), employee_id, old_name],
+            )
+            verified = uc.fetchval(
+                "SELECT certification FROM employee_certifications "
+                "WHERE employee_id = ? AND lower(certification) = lower(?)",
+                [employee_id, new_name],
+            )
+        
+        elif table == "employee_projects" and operation == "UPDATE" and proposal.get("field") == "client":
+            uc.execute(
+                "UPDATE employee_projects SET client = ? WHERE employee_id = ? "
+                "AND lower(project) = lower(?)",
+                [proposal["new_value"], employee_id, proposal["project"]],
+            )
+            verified = uc.fetchval(
+                "SELECT client FROM employee_projects WHERE employee_id = ? "
+                "AND lower(project) = lower(?)",
+                [employee_id, proposal["project"]],
+            )
+        
+        elif table == "employee_managers" and operation == "DELETE":
+            uc.execute(
+                "DELETE FROM employee_managers WHERE employee_id = ?",
+                [employee_id],
+            )
+            count = int(uc.fetchval(
+                "SELECT COUNT(*) FROM employee_managers WHERE employee_id = ?",
+                [employee_id],
+            ) or 0)
+            if count != 0:
+                raise ValueError("manager link could not be removed")
+            verified = None
         
         else:
             raise ValueError("unsupported write proposal")

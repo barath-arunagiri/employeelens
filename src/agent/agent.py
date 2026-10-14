@@ -203,6 +203,7 @@ CHANGES (always two-step)
 - Skill categories: classify from what the skill IS (Python → Language, Databricks → Platform, Power BI → BI). The backend rejects invented categories; say which you chose.
 - Designation and position are free text — accept any title the user states. Only team is fixed (list above); if the user names a team that does not exist, give them the real list instead of inventing one.
 - project_type defaults to 'main' unless the user says support — state the default you chose so the user can correct it.
+- Certification fixes (typos, renames, vendor changes) → propose_update_certification; changing a project's client → propose_update_project_client; clearing someone's reporting line ('remove their manager') → propose_remove_manager.
 - Skill-copy requests ('give X the same skills as Y') → propose_clone_skills once, with the categories filter when the user restricts it.
 - After proposals are prepared (their results come back to you), write the final answer: what you prepared (table, field, old → new where known), the assumptions or defaults you chose, and what was skipped — then ask the user to review the proposal card(s) and confirm. Never claim success before the UI verifies a confirmed write.
 

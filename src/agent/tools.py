@@ -846,6 +846,65 @@ MANAGEMENT_TOOLS = [
             ],
         },
     },
+
+    {
+        "name": "propose_update_certification",
+        "description": (
+            "Propose renaming an employee's certification and/or changing "
+            "its vendor. Never writes data; Streamlit confirmation is required."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "employee_id": {"type": "string"},
+                "certification": {"type": "string"},
+                "new_certification": {"type": "string"},
+                "vendor": {"type": "string"},
+            },
+            "required": [
+                "employee_id",
+                "certification",
+            ],
+        },
+    },
+
+    {
+        "name": "propose_update_project_client",
+        "description": (
+            "Propose changing the client for an employee's project. "
+            "Never writes data; Streamlit confirmation is required."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "employee_id": {"type": "string"},
+                "project": {"type": "string"},
+                "client": {"type": "string"},
+            },
+            "required": [
+                "employee_id",
+                "project",
+                "client",
+            ],
+        },
+    },
+
+    {
+        "name": "propose_remove_manager",
+        "description": (
+            "Propose clearing an employee's reporting line (removes their "
+            "manager link). Never writes data; Streamlit confirmation is required."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "employee_id": {"type": "string"},
+            },
+            "required": [
+                "employee_id",
+            ],
+        },
+    },
 ]
 
 
@@ -937,6 +996,23 @@ MANAGEMENT_DISPATCH = {
     "propose_update_manager": lambda a: repo.propose_update_manager(
         a["employee_id"],
         a["manager"],
+    ),
+
+    "propose_update_certification": lambda a: repo.propose_update_certification(
+        a["employee_id"],
+        a["certification"],
+        a.get("new_certification", ""),
+        a.get("vendor", ""),
+    ),
+
+    "propose_update_project_client": lambda a: repo.propose_update_project_client(
+        a["employee_id"],
+        a["project"],
+        a["client"],
+    ),
+
+    "propose_remove_manager": lambda a: repo.propose_remove_manager(
+        a["employee_id"],
     ),
 
     "propose_delete_employee": lambda a: repo.propose_delete_employee(
