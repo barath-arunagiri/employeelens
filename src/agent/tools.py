@@ -658,8 +658,16 @@ MANAGEMENT_TOOLS = [
     {
         "name": "propose_create_employee",
         "description": (
-            "Propose creating an employee with a unique ID, name, "
-            "and optional email; confirmation is required."
+            "Propose creating an employee with ID, name, mail, and optional "
+            "designation, position and team; confirmation is required. Team must "
+            "be one of the real teams in this data: Cyber Team, Data Team, "
+            "Gen AI Team, HR Team, Presales Team, Resourcing Team, Sales Team — "
+            "the backend rejects anything else. Designations people actually "
+            "hold: Data Engineer, Gen AI Developer, Cyber Security Analyst, "
+            "HR Executive, IT Recruiter - US/CANADA/INDIA, Presales Executive, "
+            "Business Development Executive, COE Executive, Recruiter - INDIA, "
+            "Lead Acceleration. Positions: Intern, Team Lead, Module Lead, "
+            "Project Manager, Senior, Operational Manager."
         ),
         "input_schema": {
             "type": "object",
@@ -667,6 +675,21 @@ MANAGEMENT_TOOLS = [
                 "employee_id": {"type": "string"},
                 "name": {"type": "string"},
                 "email": {"type": "string"},
+                "designation": {
+                    "type": "string",
+                    "description": "Job designation, e.g. Data Engineer, Gen AI Developer",
+                },
+                "position": {
+                    "type": "string",
+                    "description": "Position level, e.g. Intern, Team Lead, Senior",
+                },
+                "team": {
+                    "type": "string",
+                    "description": (
+                        "One of the real teams: Cyber Team, Data Team, Gen AI Team, "
+                        "HR Team, Presales Team, Resourcing Team, Sales Team"
+                    ),
+                },
             },
             "required": [
                 "employee_id",
@@ -835,6 +858,9 @@ MANAGEMENT_DISPATCH = {
         a["employee_id"],
         a["name"],
         a.get("email", ""),
+        a.get("designation", ""),
+        a.get("position", ""),
+        a.get("team", ""),
     ),
 
     "propose_delete_certification": lambda a: repo.propose_delete_certification(

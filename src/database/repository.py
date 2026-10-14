@@ -340,7 +340,15 @@ def propose_move_project(employee_id: str, from_project: str, to_project: str,
         }
 
 
-def propose_create_employee(employee_id: str, name: str, email: str = "") -> dict:
+def propose_create_employee(employee_id: str, name: str, email: str = "",
+                          designation: str = "", position: str = "",
+                          team: str = "") -> dict:
+    """
+    Create an employee with optional designation, position and team.
+    Team is validated against the teams that actually exist in the data
+    (Cyber, Data, Gen AI, HR, Presales, Resourcing, Sales Team) so a new
+    hire always lands in a team the search tools can find.
+    """
     employee_id = _validate_employee_value("employee_id", employee_id)
     name = _validate_employee_value("name", name)
     if email:
@@ -351,10 +359,29 @@ def propose_create_employee(employee_id: str, name: str, email: str = "") -> dic
         [employee_id]
     ):
         raise ValueError(f"employee '{employee_id}' already exists")
+
+    designation = (designation or "").strip() or None
+    position = (position or "").strip() or None
+    team = (team or "").strip() or None
+    if team:
+        real_teams = q(
+            "SELECT DISTINCT team FROM employees "
+            "WHERE team IS NOT NULL ORDER BY team"
+        )
+        matches = [t for t in real_teams["team"]
+                   if str(t).strip().lower() == team.lower()]
+        if not matches:
+            raise ValueError(
+                f"'{team}' is not an existing team. Teams in this data: "
+                + ", ".join(str(t) for t in real_teams["team"])
+            )
+        team = matches[0]  # exact casing from the data
+
     return {
         "operation": "INSERT", "table": "employees", "employee_id": employee_id,
         "field": "employee", "old_value": None, "new_value": name,
-        "email": email or None, "requires_confirmation": True,
+        "email": email or None, "designation": designation, "position": position,
+        "team": team, "requires_confirmation": True,
     }
 
 
@@ -676,8 +703,12 @@ def execute_proposal(proposal: dict) -> dict:
         
         elif table == "employees" and operation == "INSERT":
             uc.execute(
-                "INSERT INTO employees (employee_id, name, email) VALUES (?, ?, ?)",
-                [employee_id, proposal["new_value"], proposal.get("email")],
+                "INSERT INTO employees "
+                "(employee_id, name, email, position, team, designation) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                [employee_id, proposal["new_value"], proposal.get("email"),
+                 proposal.get("position"), proposal.get("team"),
+                 proposal.get("designation")],
             )
             verified = uc.fetchval("SELECT employee_id FROM employees WHERE employee_id = ?", [employee_id])
         
