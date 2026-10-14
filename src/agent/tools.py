@@ -659,15 +659,15 @@ MANAGEMENT_TOOLS = [
         "name": "propose_create_employee",
         "description": (
             "Propose creating an employee with ID, name, mail, and optional "
-            "designation, position and team; confirmation is required. Team must "
-            "be one of the real teams in this data: Cyber Team, Data Team, "
-            "Gen AI Team, HR Team, Presales Team, Resourcing Team, Sales Team — "
-            "the backend rejects anything else. Designations people actually "
-            "hold: Data Engineer, Gen AI Developer, Cyber Security Analyst, "
-            "HR Executive, IT Recruiter - US/CANADA/INDIA, Presales Executive, "
-            "Business Development Executive, COE Executive, Recruiter - INDIA, "
-            "Lead Acceleration. Positions: Intern, Team Lead, Module Lead, "
-            "Project Manager, Senior, Operational Manager."
+            "designation, position and team; confirmation is required. Designation "
+            "and position are FREE TEXT — accept new titles the user gives (e.g. "
+            "'FDE Trainee', 'Gen AI Developer') instead of asking them to pick an "
+            "existing one. Common designations: Data Engineer, Gen AI Developer, "
+            "Cyber Security Analyst, HR Executive, IT Recruiter, Presales Executive. "
+            "Common positions: Intern, Team Lead, Senior. ONLY team is fixed: it "
+            "must be one of the real teams — Cyber Team, Data Team, Gen AI Team, "
+            "HR Team, Presales Team, Resourcing Team, Sales Team — and the backend "
+            "rejects anything else."
         ),
         "input_schema": {
             "type": "object",
@@ -681,7 +681,10 @@ MANAGEMENT_TOOLS = [
                 },
                 "position": {
                     "type": "string",
-                    "description": "Position level, e.g. Intern, Team Lead, Senior",
+                    "description": (
+                        "Position level/title, FREE TEXT — any new title is fine, "
+                        "e.g. Intern, Team Lead, Senior, FDE Trainee"
+                    ),
                 },
                 "team": {
                     "type": "string",
