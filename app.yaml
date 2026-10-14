@@ -8,10 +8,10 @@ command:
 # injected by Databricks into DATABRICKS_SQL_WAREHOUSE_ID via valueFrom —
 # it is not hardcoded here.
 resources:
+- name: employee-warehouse
   sql_warehouse:
-    employee-warehouse:
-      id: eafe19ac379b5437
-      permission: CAN_USE
+    id: eafe19ac379b5437
+    permission: CAN_USE
 
 env:
 - name: STREAMLIT_GATHER_USAGE_STATS
