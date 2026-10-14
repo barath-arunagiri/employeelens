@@ -31,10 +31,28 @@ MANAGEMENT_FIELDS = {
     "email": "email",
     "department": "department",
     "designation": "designation",
+    "position": "position",
+    "team": "team",
     "location": "location",
     "employment_status": "employment_status",
     "joining_date": "joining_date",
 }
+
+# Real teams, loaded once from the employees table (team is the one
+# fixed-vocabulary employee field — never invent one).
+_teams_cache = None
+
+
+def valid_teams():
+    """Distinct real team names, cached after the first call."""
+    global _teams_cache
+    if _teams_cache is None:
+        rows = q(
+            "SELECT DISTINCT team FROM employees "
+            "WHERE team IS NOT NULL AND team <> ''"
+        )
+        _teams_cache = sorted(str(t) for t in rows["team"].tolist())
+    return _teams_cache
 
 
 def ensure_management_schema() -> None:
@@ -81,6 +99,19 @@ def _validate_employee_value(field: str, value: str) -> str:
         raise ValueError("email is not valid")
     if field == "joining_date" and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
         raise ValueError("joining_date must use YYYY-MM-DD")
+    if field == "team":
+        # Fixed vocabulary: accept only a real team (case-insensitive),
+        # canonicalized to the stored casing.
+        teams = {t.lower(): t for t in valid_teams()}
+        canonical = (teams.get(value.lower())
+                     # users often omit the 'Team' suffix: 'gen ai' → 'Gen AI Team'
+                     or teams.get(f"{value.lower()} team"))
+        if canonical is None:
+            raise ValueError(
+                f"team '{value}' does not exist. Real teams: "
+                + ", ".join(valid_teams())
+            )
+        return canonical
     return value
 
 
