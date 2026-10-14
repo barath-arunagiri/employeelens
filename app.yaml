@@ -3,20 +3,15 @@ command:
 - run
 - app/streamlit_app.py
 
-# Least-privilege access to the workspace SQL warehouse: declared as a
-# CAN_USE app resource (no admin rights on the warehouse). The ID is
-# injected by Databricks into DATABRICKS_SQL_WAREHOUSE_ID via valueFrom —
-# it is not hardcoded here.
-resources:
-- name: employee-warehouse
-  sql_warehouse:
-    id: eafe19ac379b5437
-    permission: CAN_USE
+# The SQL warehouse (CAN_USE, id eafe19ac379b5437) is attached to this app
+# as the app-level resource "sql-warehouse" in the Apps UI. It is NOT
+# declared here: a valueFrom in env can only reference resources that
+# exist at app level, so the binding below uses that resource name.
 
 env:
 - name: STREAMLIT_GATHER_USAGE_STATS
   value: 'false'
 - name: DATABRICKS_SQL_WAREHOUSE_ID
-  valueFrom: employee-warehouse
+  valueFrom: sql-warehouse
 - name: DATA_MANAGEMENT_ADMINS
   value: 'baratha723@gmail.com'
