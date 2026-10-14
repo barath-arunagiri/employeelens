@@ -10,6 +10,7 @@ string into SQL.
 """
 from __future__ import annotations
 
+import difflib
 import json
 import re
 from datetime import datetime, timezone
@@ -91,6 +92,34 @@ def _employee_exists(employee_id: str) -> bool:
     ) is not None
 
 
+def _resolve_team(value: str) -> str | None:
+    """Match a user-typed team to a real team, or None if no clear match.
+
+    Matching order (all case-insensitive): exact name; name with the
+    'Team' suffix dropped ('gen ai'); unique substring ignoring spaces
+    ('genai'); close typo match ('gen ai teem'). Ambiguous input
+    ('sale' → Sales Team *and* Presales Team) and weak matches return
+    None so the caller can ask the user instead of guessing.
+    """
+    teams = valid_teams()
+    v = " ".join(value.lower().split())
+    by_lower = {t.lower(): t for t in teams}
+    if v in by_lower:
+        return by_lower[v]
+    by_stripped = {t.lower().removesuffix(" team"): t for t in teams}
+    if v in by_stripped:
+        return by_stripped[v]
+    v_ns = v.replace(" ", "")
+    subs = [t for t in teams
+            if len(v_ns) >= 3 and v_ns in t.lower().replace(" ", "")]
+    if len(subs) == 1:
+        return subs[0]
+    close = difflib.get_close_matches(v, list(by_lower), n=1, cutoff=0.85)
+    if close:
+        return by_lower[close[0]]
+    return None
+
+
 def _validate_employee_value(field: str, value: str) -> str:
     value = str(value).strip()
     if not value:
@@ -100,16 +129,23 @@ def _validate_employee_value(field: str, value: str) -> str:
     if field == "joining_date" and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
         raise ValueError("joining_date must use YYYY-MM-DD")
     if field == "team":
-        # Fixed vocabulary: accept only a real team (case-insensitive),
-        # canonicalized to the stored casing.
-        teams = {t.lower(): t for t in valid_teams()}
-        canonical = (teams.get(value.lower())
-                     # users often omit the 'Team' suffix: 'gen ai' → 'Gen AI Team'
-                     or teams.get(f"{value.lower()} team"))
+        # Fixed vocabulary, but resolved tolerantly: exact, suffix-dropped,
+        # substring or close-typo matches are canonicalized to the stored
+        # casing; anything ambiguous or unknown is rejected with hints.
+        canonical = _resolve_team(value)
         if canonical is None:
+            teams = valid_teams()
+            v_ns = " ".join(value.lower().split()).replace(" ", "")
+            subs = [t for t in teams
+                    if len(v_ns) >= 3 and v_ns in t.lower().replace(" ", "")]
+            # Suggest only when the hint narrows things down (2 candidates);
+            # with 3+ the 'Real teams' list already says it all.
+            # Suggest only when the hint narrows things down (2 candidates);
+            # with 3+ the 'Real teams' list already says it all.
+            hint = f" Did you mean: {', '.join(subs)}?" if len(subs) == 2 else ""
             raise ValueError(
-                f"team '{value}' does not exist. Real teams: "
-                + ", ".join(valid_teams())
+                f"team '{value}' is not a real team.{hint} Real teams: "
+                + ", ".join(teams)
             )
         return canonical
     return value
