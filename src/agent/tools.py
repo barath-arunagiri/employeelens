@@ -54,10 +54,15 @@ TOOLS = [
     {
         "name": "find_employees",
         "description": (
-            "Search for people by any combination of skills, projects and certifications. "
-            "All conditions must hold for the same person, so use this for questions like "
-            "'who knows Python and Azure and works on Phibro'. Leave a list empty to "
-            "ignore that dimension."
+            "The generic people-filter tool: find people by ANY combination of "
+            "skills, certifications, projects, teams, positions and manager. "
+            "ALL given conditions must hold for the same person ('who knows "
+            "Python, works on Phibro, is in the Data Team and reports to "
+            "Shyamala'). Skills, certifications, projects, teams and "
+            "positions match fuzzily (case-insensitive substring — 'ACT' "
+            "matches 'ACT Power'); managers match on the manager's name or "
+            "employee_id. Pass project_type when the user distinguishes main "
+            "vs support people on a project."
         ),
         "input_schema": {
             "type": "object",
@@ -66,13 +71,36 @@ TOOLS = [
                     "type": "array",
                     "items": {"type": "string"},
                 },
+                "certifications": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
                 "projects": {
                     "type": "array",
                     "items": {"type": "string"},
                 },
-                "certifications": {
+                "teams": {
                     "type": "array",
                     "items": {"type": "string"},
+                    "description": "e.g. ['Data Team']",
+                },
+                "positions": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "e.g. ['Team Lead'], fuzzy match",
+                },
+                "managers": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Manager name or employee_id",
+                },
+                "project_type": {
+                    "type": "string",
+                    "enum": ["main", "support"],
+                    "description": (
+                        "Narrows the projects filter to main or support "
+                        "assignments"
+                    ),
                 },
             },
         },
@@ -370,6 +398,10 @@ DISPATCH = {
             skills=a.get("skills"),
             projects=a.get("projects"),
             certifications=a.get("certifications"),
+            teams=a.get("teams"),
+            positions=a.get("positions"),
+            managers=a.get("managers"),
+            project_type=a.get("project_type"),
         )
     ),
 
@@ -440,6 +472,21 @@ DISPATCH = {
         )
     ),
 }
+
+
+# Phase 2 — one small toolset: the model is offered only the five general
+# read tools plus the propose_* tools. The narrow one-purpose specs above
+# stay implemented (dispatch and repository functions remain available to
+# the UI) but are no longer exposed to the model; their per-question
+# mappings moved into prompt rules and the generic find_employees.
+_TOOLS_OFFERED = (
+    "search_employees",
+    "get_employee_360",
+    "find_employees",
+    "run_sql",
+    "get_audit_history",
+)
+TOOLS = [t for t in TOOLS if t["name"] in _TOOLS_OFFERED]
 
 
 MANAGEMENT_TOOLS = [
@@ -800,6 +847,10 @@ MANAGEMENT_TOOLS = [
         },
     },
 ]
+
+
+# The unified agent's complete toolset: general reads + write proposals.
+ALL_TOOLS = TOOLS + MANAGEMENT_TOOLS
 
 
 MANAGEMENT_DISPATCH = {

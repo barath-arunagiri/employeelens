@@ -953,11 +953,18 @@ def list_all_employees() -> pd.DataFrame:
 def find_employees(skills: list[str] | None = None,
                    projects: list[str] | None = None,
                    certifications: list[str] | None = None,
+                   teams: list[str] | None = None,
+                   positions: list[str] | None = None,
+                   managers: list[str] | None = None,
+                   project_type: str | None = None,
                    limit: int = 500) -> pd.DataFrame:
     """
-    Intersection search: every condition must hold for the same person.
-    This is what answers 'who knows Python and Azure and works on Phibro'
-    in one query instead of three the model has to combine itself.
+    The one generic people-filter tool: every given condition must hold for
+    the same person ('who knows Python, works on Phibro, is in the Data Team
+    and reports to Shyamala'). Skills, certifications, projects, teams and
+    positions match fuzzily (case-insensitive substring); managers match on
+    the manager's name or employee_id; project_type narrows a project filter
+    to main/support assignments.
     """
     clauses, params = [], []
 
@@ -969,10 +976,14 @@ def find_employees(skills: list[str] | None = None,
         params.append(skill)
 
     for project in projects or []:
+        type_clause = " AND p.project_type = ?" if project_type else ""
+        if project_type:
+            params.append(project_type)
         clauses.append(
             "EXISTS (SELECT 1 FROM employee_projects p WHERE p.employee_id = e.employee_id "
             "AND (lower(p.project) LIKE '%' || lower(?) || '%' "
-            "     OR lower(p.client) LIKE '%' || lower(?) || '%'))"
+            "     OR lower(p.client) LIKE '%' || lower(?) || '%')"
+            + type_clause + ")"
         )
         params.extend([project, project])
 
@@ -982,6 +993,23 @@ def find_employees(skills: list[str] | None = None,
             "AND lower(c.certification) LIKE '%' || lower(?) || '%')"
         )
         params.append(cert)
+
+    for team in teams or []:
+        clauses.append("lower(e.team) LIKE '%' || lower(?) || '%'")
+        params.append(team)
+
+    for position in positions or []:
+        clauses.append("lower(e.position) LIKE '%' || lower(?) || '%'")
+        params.append(position)
+
+    for manager in managers or []:
+        clauses.append(
+            "EXISTS (SELECT 1 FROM employee_managers m "
+            "JOIN employees mgr ON mgr.employee_id = m.reporting_id "
+            "WHERE m.employee_id = e.employee_id "
+            "AND (lower(mgr.name) LIKE '%' || lower(?) || '%' OR mgr.employee_id = ?))"
+        )
+        params.extend([manager, manager])
 
     where = " AND ".join(clauses) if clauses else "TRUE"
     params.append(limit)

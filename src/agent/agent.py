@@ -2,20 +2,26 @@
 Employeelens — the agent.
 
 Uses Databricks Foundation Model APIs (free pay-per-token).
+Phase 2: one unified chat loop — questions and change requests go through
+chat()/chat_stream() with a shared Session.
 """
 
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 
 from src.config import (
     DATABRICKS_MODEL,
     DATABRICKS_MODELS,
+    MAX_REQUEST_TOOL_CALLS,
     MAX_TOOL_ROUNDS,
+    SESSION_HISTORY_MESSAGES,
 )
 from src.agent.tools import (
-    MANAGEMENT_TOOLS,
+    ALL_TOOLS,
+    MANAGEMENT_DISPATCH,
     TOOLS,
     run_management_tool,
     run_tool,
@@ -172,91 +178,76 @@ Employeelens should demonstrate the following behaviors:
 """
 
 
-SYSTEM_PROMPT_TEMPLATE = """You are Employeelens, the employee data assistant for DataPattern, a Databricks consulting firm. You answer questions about the team using the tools provided.
+SYSTEM_PROMPT_TEMPLATE = """You are Employeelens, the employee-data assistant for DataPattern, a Databricks consulting firm. One conversation handles everything: questions, searches, analysis and data changes. There are no modes — you decide from the request itself what to do.
 
-HOW TO WORK
-- Answer whatever is asked. If no specific tool fits, use run_sql; its description contains the schema.
-- When the user names a person, call search_employees first. If more than one person matches, list candidates and ask which one they mean.
-- Use find_employees when several conditions must hold for the same person.
-- Chain as many read tool calls as the question needs before answering.
-- Every management request must use exactly one proposal tool. Never execute a write from the read flow.
-- Follow-ups such as "what about their projects" refer to the previous person or list.
-
-ROUTING EXAMPLES
-- "Who is employee 2020135?" -> search_employees or get_employee_360 by ID
-- "Who is <name>?" -> search_employees first
-- "Who knows Python?" -> find_employees_by_skill
-- "Who knows Python and SQL?" -> find_employees with both skills
-- "Who works on <project>?" -> find_employees_by_project
-- "Who is support on <project>?" -> find_employees_by_project with project_type=support; "who are the main people on <project>?" -> project_type=main
-- Project names are fuzzy: 'ACT' or 'ACT Power' both match; never treat a partial name as unknown without searching
-- "Who has <X> certification?" -> find_employees_by_certification
-- "Who reports to <name>?" -> search_employees for the manager, then get_direct_reports
-- "How many employees know <skill>?" -> find_employees_by_skill, report row_count, never estimate
-- "Show <id>'s complete profile" -> get_employee_360
-- "Show changes made to <id>" -> get_audit_history
-- "Which project has the most people?" -> headcount_by_project
-- "Top skills / most common skill" -> top_skills
-- "Who has no skills recorded?" -> employees_without_skills
-- "Who is the Project Manager?" -> run_sql: SELECT * FROM employees WHERE position ILIKE '%project%manager%'
-- "Who are the Team Leads?" -> run_sql: SELECT * FROM employees WHERE position ILIKE '%team%lead%'
-- "Who is in the Data Team?" -> find_employees_by_team
-- "What are all the positions?" -> run_sql: SELECT DISTINCT position FROM employees WHERE position IS NOT NULL
-- "Who has designation Data Engineer?" -> run_sql: SELECT * FROM employees WHERE designation ILIKE '%data%engineer%'
-- "How many Team Leads are there?" -> run_sql: SELECT COUNT(*) FROM employees WHERE position ILIKE '%team%lead%'
-
-GROUNDING RULES
-- Every fact must come from a tool result in this conversation.
-- If a tool returns no rows, say so plainly. Never invent people, projects, skills or certifications.
-- Report counts exactly as returned.
-
-WHAT THIS DATASET DOES NOT CONTAIN
-- There are no reliable department, joining-date, location or salary fields. Position, designation and team may be available for some employees; report them when present and say "not recorded" when absent. Do not substitute project or skill category for department.
+THE DATA
+Tables in workspace.employeelens: employees (employee_id, name, email, position, team, designation; department/location/employment_status/joining_date exist but are mostly empty), employee_skills (skill, category, qualifier), employee_projects (project, client, technologies, role, project_type main|support), employee_certifications (certification, vendor), employee_managers (employee_id, reporting_id).
+Skill categories are exactly: Language, Database, AI, Tool, Platform, Security, Design, BI, Cloud, OS, Other.
+Teams are exactly: Cyber, Data, Gen AI, HR, Presales, Resourcing, Sales Team.
 
 COVERAGE
-- Skills are recorded for {with_skills} of {employees} people. When you report that nobody has a skill, mention that it only covers those with a profile.
+- Skills are recorded for {with_skills} of {employees} people. When nobody matches a skill, mention that profiles only cover those with recorded skills.
+
+HOW TO WORK
+- Ground every fact in tool results from this conversation. Never answer an employee-data question from memory — call a tool first.
+- When the user names a person, resolve them with search_employees (names are ambiguous; several people share first names). If several match, list them (Name | ID | Team) and ask which one they mean.
+- find_employees answers combined filters (skills, certifications, projects, teams, positions, manager) in one call; project_type narrows main vs support.
+- run_sql is the catch-all for anything else (cross-table counts, distinct values, unusual filters). It is a guarded single read-only SELECT; a LIMIT is always applied.
+- get_audit_history answers change-history questions ("who changed X", "what changed on <id>", recent changes).
+
+CHANGES (always two-step)
+- Change requests go through the propose_* tools. They prepare proposals — they NEVER write. A human confirms every change in the UI, and the backend re-reads and verifies after confirmation.
+- Resolve names to employee_ids with search_employees first; never guess IDs. An ID given directly needs no search.
+- Create ALL proposals in ONE response (parallel tool calls, one per employee/record).
+- Batch items: if one item fails (e.g. 'already exists'), skip it, mention the skip, continue the rest.
+- Skill categories: classify from what the skill IS (Python → Language, Databricks → Platform, Power BI → BI). The backend rejects invented categories; say which you chose.
+- Designation and position are free text — accept any title the user states. Only team is fixed (list above); if the user names a team that does not exist, give them the real list instead of inventing one.
+- project_type defaults to 'main' unless the user says support — state the default you chose so the user can correct it.
+- Skill-copy requests ('give X the same skills as Y') → propose_clone_skills once, with the categories filter when the user restricts it.
+- After proposals are prepared (their results come back to you), write the final answer: what you prepared (table, field, old → new where known), the assumptions or defaults you chose, and what was skipped — then ask the user to review the proposal card(s) and confirm. Never claim success before the UI verifies a confirmed write.
+
+MULTI-STEP REQUESTS
+- When a request needs several pieces, state a short one-line plan first, run the tools, check the results, then answer.
+
+FOLLOW-UPS
+- Resolve "that person", "the first two", "their projects" from the conversation and the session context. If you cannot tell who is meant, ask one short clarifying question. Never silently switch people.
+
+WHAT THIS DATASET DOES NOT CONTAIN
+- No reliable department, joining-date, location or salary data. Report "not recorded" when absent; never substitute project or skill category for department.
 
 STYLE
-- Lead with the direct answer immediately. No preamble or explanation of process.
-- Do NOT describe what tools you used or what you checked — users don't need to know.
-- Format every response in clean Markdown so it renders aligned in the chat UI.
-- For a list of people, ALWAYS use a Markdown table with fixed columns, one person per row, e.g.:
-  | Name | ID | Details |
-  |------|----|---------|
-  | **Shyamala Vignesh** | 2020024 | Project Manager · NovaBio |
-  | **Barath A** | 2020031 | Databricks · Azure |
-  Put the asked-about attribute (role, skills, certifications, project) in the Details column. Leave a cell empty rather than writing "not recorded" in every row.
-- Answer exactly what was asked — no column dumping. For project membership ("who works on <project>", "who is support on <project>"), the table is JUST Name | ID — no Type column, no client, technologies or any other project details. Only show those extra fields when the user explicitly asks about them. The same applies to every tool: present the fields relevant to the question, not every field the tool returns.
-- For counts, comparisons or multi-column data, also use a short Markdown table.
-- For a single fact, one short sentence with the person's name in bold.
-- Keep responses ultra-concise: no summary sentence repeating what the table already shows.
-- Example single fact: "**Shyamala Vignesh** (2020024) is the Project Manager." NOT "To find the Project Manager, I checked..."
+- Lead with the direct answer. No preamble, no describing which tools you used.
+- Clean Markdown. Lists of people: a table (Name | ID | Details) — put the asked-about attribute in Details. For project membership the table is JUST Name | ID. Answer exactly what was asked; no column dumping.
+- Counts and comparisons: a short table. Single fact: one short sentence with the person's name in bold. Keep it ultra-concise.
 """
 
 
-def _build_system_prompt() -> str:
+def _build_system_prompt(session: "Session | None" = None) -> str:
     """
     Fill the coverage line from the live database instead of a hardcoded
-    number.
+    number, and append the rolling session context when a Session is
+    provided so follow-ups ("that person", "the first two") resolve.
 
     If the database cannot be read, use dataset-agnostic wording instead
     of showing stale or fabricated statistics.
     """
     try:
         stats = repo.dataset_stats()
-
-        core = CORE_AGENT_INSTRUCTIONS + "\n\n"
-        return core + SYSTEM_PROMPT_TEMPLATE.format(
+        prompt = CORE_AGENT_INSTRUCTIONS + "\n\n" + SYSTEM_PROMPT_TEMPLATE.format(
             with_skills=stats["with_skills"],
             employees=stats["employees"],
         )
-
     except Exception:  # noqa: BLE001
-        core = CORE_AGENT_INSTRUCTIONS + "\n\n"
-        return core + SYSTEM_PROMPT_TEMPLATE.format(
+        prompt = CORE_AGENT_INSTRUCTIONS + "\n\n" + SYSTEM_PROMPT_TEMPLATE.format(
             with_skills="only some",
             employees="all",
         )
+
+    if session is not None:
+        context = session.context()
+        if context:
+            prompt += "\n\nSESSION CONTEXT (from earlier in this conversation):\n" + context
+    return prompt
 
 
 @dataclass
@@ -268,6 +259,79 @@ class AgentResult:
     proposal: dict | None = None
     data: list[dict] = field(default_factory=list)
     proposals: list[dict] = field(default_factory=list)
+
+
+@dataclass
+class Session:
+    """
+    One conversation's memory: a short context summary plus the most
+    recent messages. Follow-ups like "that person" or "the first two"
+    resolve from it, and long conversations don't overflow the model
+    context (only the last SESSION_HISTORY_MESSAGES messages are sent).
+    """
+    summary: str = ""
+    executions: list[str] = field(default_factory=list)
+    messages: list[dict] = field(default_factory=list)
+
+    def append(self, role: str, content: str) -> None:
+        self.messages.append({"role": role, "content": str(content)})
+
+    def recent(self, keep: int = SESSION_HISTORY_MESSAGES) -> list[dict]:
+        return list(self.messages)[-keep:]
+
+    def context(self) -> str:
+        parts = []
+        if self.summary:
+            parts.append(self.summary)
+        if self.executions:
+            parts.append("Confirmed changes so far: " + "; ".join(self.executions[-10:]))
+        return "\n".join(parts)
+
+    def record(self, user_message: str, answer: str, trace: list[dict],
+               proposals: list[dict]) -> None:
+        """Store a completed turn: messages for follow-ups, summary for references."""
+        self.append("user", user_message)
+        self.append("assistant", answer)
+
+        people = None
+        for entry in reversed(trace):
+            rows = (entry.get("output") or {}).get("rows")
+            if (isinstance(rows, list) and rows
+                    and isinstance(rows[0], dict) and rows[0].get("employee_id")):
+                # Only people-rows: skip nameless rows (e.g. audit-history
+                # entries that carry employee_id but no name).
+                people = [(r.get("employee_id"), r.get("name"))
+                          for r in rows[:8]
+                          if r.get("employee_id") and r.get("name")]
+                if people:
+                    break
+                people = None
+        parts = []
+        if people:
+            parts.append("Last people discussed, in order: "
+                         + ", ".join(f"{n} ({i})" for i, n in people))
+        if proposals:
+            parts.append(f"{len(proposals)} proposal(s) prepared, awaiting user confirmation in the UI")
+        if parts:
+            self.summary = "\n".join(parts)
+
+    def record_execution(self, results: list[dict], actor: str) -> None:
+        """Record confirmed + verified writes so later turns know they happened."""
+        brief = []
+        for r in results or []:
+            what = r.get("change_type") or r.get("operation") or "?"
+            field = r.get("field_name")
+            item = f"{what} {field}".strip() if field else str(what)
+            if r.get("new_value") is not None:
+                item += f" -> {r.get('new_value')}"
+            if r.get("status"):
+                item += f" [{r.get('status')}]"
+            brief.append(item)
+        if not brief:
+            return
+        self.executions.append(f"by {actor}: " + "; ".join(brief))
+        self.append("user", f"[confirmed by {actor}] The following changes were "
+                            f"verified and written: {'; '.join(brief)}")
 
 
 def _extract_content_text(content) -> str:
@@ -416,277 +480,356 @@ class PeopleLensAgent:
         self,
         question: str,
         history: list[dict] | None = None,
+        session: Session | None = None,
     ) -> AgentResult:
         """
-        Answer a normal employee-data question.
-
-        Only the most recent messages are sent so long conversations do
-        not overflow the model context, while follow-up references
-        ("show me their projects") still resolve.
+        Compatibility wrapper. Phase 2 has ONE chat loop: ask() and
+        propose_management() both go through chat(); the model itself
+        decides between reads and change proposals.
         """
-        return self._run_groq(
-            question,
-            (history or [])[-16:],
-        )
+        return self.chat(question, history=history, session=session)
 
-    def propose_management(
+    # -------------------------------------------------------------
+    # Unified agent loop (Phase 2)
+    # -------------------------------------------------------------
+
+    def chat(
         self,
-        request: str,
+        message: str,
         history: list[dict] | None = None,
+        session: Session | None = None,
     ) -> AgentResult:
         """
-        Handle employee-data management requests.
+        The ONE agent entry point: questions, searches, analysis and
+        change requests all go through this loop. Read tools and
+        propose_* tools are offered together; the model chooses.
 
-        Management tools only create proposals.
-        They do not directly write to Unity Catalog.
+        Proposals never end the loop — their results go back to the
+        model so it writes the final answer itself (what it prepared,
+        the defaults it chose, what it skipped).
 
-        Recent conversation history is included so follow-up requests
-        ("now do the same for Nisha") resolve correctly.
+        Hard limits: MAX_TOOL_ROUNDS rounds and MAX_REQUEST_TOOL_CALLS
+        tool executions (the per-request warehouse-statement budget).
         """
-
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    CORE_AGENT_INSTRUCTIONS + "\n\n" +
-                    "You are the Employeelens HR data management assistant. You prepare data "
-                    "changes for a human reviewer — you never write to Unity Catalog directly. "
-                    "Act like a professional data steward: precise, transparent, easy to follow. "
-                    "\n\nWORK AS VISIBLE, NUMBERED STEPS:\n"
-                    "Step 1 — Understand: restate the requested change in one line (who, what field, what new value). "
-                    "Step 2 — Resolve: if the request uses employee NAMES, call search_employees for each name to get exact employee_ids. Never guess IDs. "
-                    "Step 3 — Validate: pick the right proposal tool and derive values from the REAL data, not defaults — for skill categories, the tool description lists the only categories this dataset uses (Language, Database, AI, Tool, Platform, Security, Design, BI, Cloud, OS, Other); classify each skill from what it actually IS (Python → Language, Databricks → Platform, Power BI → BI). The backend rejects invented categories. Say which classification you chose and why. "
-                    "Step 4 — Propose: create ALL proposals in ONE response (parallel tool calls, one per employee/record). "
-                    "Step 5 — Hand off: end by telling the user to review the proposal card(s) below and press Confirm or Cancel. Nothing is written until they confirm. "
-                    "\n\nPROFESSIONAL ANSWER FORMAT:\n"
-                    "- Start with one line: what you understood and what you prepared, e.g. 'Prepared 1 change: add the skill Databricks (category Platform) for Barath A (EMP2020031).' "
-                    "- Then list the steps you actually performed, in order, e.g. '1. Searched for Barath → matched Barath A (EMP2020031). 2. Classified Databricks as Platform (Databricks product skill). 3. Prepared skill proposal.' "
-                    "- For each change, state plainly: table, field, old value (if any) → new value. "
-                    "- If you chose a default or inferred something, say so explicitly so the user can correct it. "
-                    "- Keep it concise and scannable: short numbered lines, not paragraphs. "
-                    "\n\nWHEN INFORMATION IS MISSING OR AMBIGUOUS:\n"
-                    "- Multiple name matches → list them in a small Markdown table (Name | ID | Team) and ask which one; never pick one silently. "
-                    "- No match → say so clearly and show the closest matches if any; never use placeholder IDs. "
-                    "- Request too vague (e.g. 'Add Databricks' with no employee) → ask exactly what is missing ('Which employee should get the Databricks skill?') and offer likely candidates from search results. "
-                    "\n\nBATCH REQUESTS:\n"
-                    "- Assignment requests ('assign <employee> to/on <project>', '<employee> on <project>', possessive or typo forms like '2020134's on L&T project') → call propose_add_project ONCE. An employee_id given directly needs no search; resolve names with search_employees. project_type defaults to 'main' unless the user says support — state that default in your answer so the user can correct it. "
-                    "- Employee-creation requests may include designation, position and team ('add employee <id> <name> with mail <email>, designation Gen AI Developer, team Gen AI Team'). Pass every field the user gives into propose_create_employee. Designation and position are FREE TEXT — accept any title the user states (including new ones like 'FDE Trainee'); never ask them to pick from existing values. ONLY team is fixed: one of the real teams (Cyber, Data, Gen AI, HR, Presales, Resourcing, Sales Team) — if the user names a team that does not exist, tell them the real list instead of inventing one. "
-                    "- For 'add cert to Barath, Nisha, Sanjai' → resolve all three names first, then call the proposal tool once per employee IN THE SAME response. "
-                    "- Skill-copy requests ('give X the same skills as Y', 'copy skills from Y to X', 'Y's skills for X') → resolve BOTH names, then call propose_clone_skills ONCE. If the user restricts to specific categories ('copy only the AI and Language skills from Y to X'), pass those in the categories argument and copy ONLY those. Report how many skills will be copied, that duplicates are skipped, and that each skill keeps its existing category. "
-                    "- Use parallel tool calls - do not wait for one proposal to complete before creating the next. "
-                    "- If a tool returns an error such as 'already exists', that item needs no change: skip it, mention the skip in your final answer, and continue with the remaining items — never abandon the rest of a batch because one item failed. "
-                    "\n\nHISTORY QUERIES:\n"
-                    "- For history questions, use get_audit_history and answer from its rows without confirmation. "
-                    "\n\nSTRICT RULES:\n"
-                    "- Act, don't announce: never end a response with 'preparing', 'please wait', or a promise of a future action. When a change is needed, emit the proposal tool call(s) IMMEDIATELY in that same response; write the professional summary AFTER the tool results arrive. "
-                    "- Never invent employee IDs, records, or values. "
-                    "- Proposal tools never write to Unity Catalog — they only prepare proposals for user confirmation. "
-                    "- If name resolution fails, explain why and ask for clarification."
-                ),
-            },
-            *list(history or [])[-12:],
-            {
-                "role": "user",
-                "content": request,
-            },
-        ]
-
+        messages = self._unified_messages(message, history, session)
         trace: list[dict] = []
+        proposals: list[dict] = []
+        calls_used = 0
 
-        management_tools = (
-            MANAGEMENT_TOOLS
-            + [
-                tool
-                for tool in TOOLS
-                if tool["name"] in ["get_audit_history", "search_employees", "get_employee_360"]
-            ]
-        )
-
-        for round_no in range(
-            1,
-            MAX_TOOL_ROUNDS + 1,
-        ):
+        for round_no in range(1, MAX_TOOL_ROUNDS + 1):
             try:
-                response = self._chat_with_retry(
-                    model=self.model,
-                    max_tokens=1200,
-                    tools=_openai_tools(management_tools),
-                    tool_choice="auto",
-                    messages=messages,
-                )
+                m = self._model_round(messages)
 
             except Exception as exc:  # noqa: BLE001
-                # Handle Groq/OpenAI-compatible rate limiting without
-                # allowing the SDK/application to hang.
                 if self._is_rate_limit_error(exc):
-                    return AgentResult(
-                        answer=(
-                            "All models reached rate limit (tried 4 fallback models). "
-                            "Please wait a moment and try again."
-                        ),
-                        trace=trace,
-                        rounds=round_no,
-                        backend=f"Databricks · {self._get_model_display()}",
-                    )
-
-                return AgentResult(
-                    answer=(
-                        "I couldn't complete that request — a backend error "
-                        f"occurred ({type(exc).__name__}). Please try again, "
-                        "or rephrase the request."
-                    ),
-                    trace=trace,
-                    rounds=round_no,
-                    backend=f"Databricks · {self._get_model_display()}",
-                )
-
-            message = response.choices[0].message
-
-            if not message.tool_calls:
-                # Agentic self-correction: if the FIRST round ends in prose
-                # (e.g. "Please wait while I prepare...") without a single
-                # tool call, nudge the model once to actually act instead of
-                # returning the half-finished narration to the user.
-                if round_no == 1 and not trace:
-                    messages.append(
-                        {
-                            "role": "assistant",
-                            "content": _extract_content_text(message.content),
-                        }
-                    )
-                    messages.append(
-                        {
-                            "role": "user",
-                            "content": (
-                                "Do not narrate — act now. Make the required "
-                                "proposal tool call(s) in your next response."
-                            ),
-                        }
-                    )
-                    continue
-                return AgentResult(
-                    _extract_content_text(message.content).strip(),
-                    trace,
-                    round_no,
-                    f"Databricks · {self.model}",
-                )
-
-            # Preserve assistant tool-call message for multi-round conversations
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": _extract_content_text(message.content),
-                    "tool_calls": [
-                        {
-                            "id": call.id,
-                            "type": "function",
-                            "function": {
-                                "name": call.function.name,
-                                "arguments": call.function.arguments,
-                            },
-                        }
-                        for call in message.tool_calls
-                    ],
-                }
-            )
-
-            proposals = []
-            errors = []
-
-            for call in message.tool_calls:
-                try:
-                    args = json.loads(
-                        call.function.arguments or "{}"
-                    )
-
-                except json.JSONDecodeError:
-                    args = {}
-
-                # Route read-only tools (search, audit) vs management proposal tools
-                if call.function.name in ["get_audit_history", "search_employees", "get_employee_360"]:
-                    output = run_tool(
-                        call.function.name,
-                        args,
-                    )
+                    answer = ("All models reached rate limit (tried every "
+                              "fallback model). Please wait a moment and try again.")
                 else:
-                    output = run_management_tool(
-                        call.function.name,
-                        args,
-                    )
-
-                trace.append(
-                    {
-                        "tool": call.function.name,
-                        "input": args,
-                        "row_count": output.get("row_count"),
-                        "output": output,
-                    }
-                )
-
-                # Append tool result to messages so agent can use it in next round
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": call.id,
-                        "name": call.function.name,
-                        "content": json.dumps(
-                            output,
-                            default=str,
-                        )[:16000],
-                    }
-                )
-
-                if "error" in output:
-                    # A failed item (e.g. 'already exists') must not abort the
-                    # rest of the batch — note it and keep going.
-                    errors.append(
-                        f"{call.function.name}: {output['error']}"
-                    )
-                    continue
-
-                # Only management tools generate proposals, not read-only tools
-                if call.function.name not in ["get_audit_history", "search_employees", "get_employee_360"]:
-                    proposals.extend(
-                        output.get("rows", [])
-                    )
-
-            if proposals:
-                summary = (
-                    "Please review the proposed changes and "
-                    "confirm them in the Data Management tab."
-                )
-                if errors:
-                    summary = (
-                        f"Skipped {len(errors)} item(s): " + " | ".join(errors)
-                        + " — " + summary
-                    )
+                    answer = ("I couldn't complete that request — a backend "
+                              f"error occurred ({type(exc).__name__}). Please "
+                              "try again, or rephrase the request.")
                 return AgentResult(
-                    summary,
+                    answer, trace, round_no,
+                    f"Databricks · {self._get_model_display()}",
+                )
+
+            if not m.tool_calls:
+                answer = _extract_content_text(m.content).strip()
+                if session is not None:
+                    session.record(message, answer, trace, proposals)
+                return AgentResult(
+                    answer,
                     trace,
                     round_no,
                     f"Databricks · {self.model}",
-                    proposals[0],
+                    proposals[0] if proposals else None,
                     [],
                     proposals,
                 )
 
-            if errors:
-                return AgentResult(
-                    "Could not prepare any changes. " + " | ".join(errors),
-                    trace,
-                    round_no,
-                    f"Databricks · {self.model}",
-                )
+            # Preserve the assistant tool-call message for the next round.
+            messages.append(self._assistant_tool_message(m))
+            calls_used = self._execute_tool_calls(
+                m, messages, trace, proposals, calls_used
+            )
 
-            # No proposals yet - continue loop if agent only called read-only tools
-            # (search_employees, get_audit_history, etc.) to gather information
-
+        answer = (
+            "I could not finish that within the tool-call limit. "
+            "Try a narrower question."
+        )
+        if session is not None:
+            session.record(message, answer, trace, proposals)
         return AgentResult(
-            "I could not create a management proposal.",
+            answer,
             trace,
             MAX_TOOL_ROUNDS,
             f"Databricks · {self.model}",
+            proposals[0] if proposals else None,
+            [],
+            proposals,
         )
+
+    def _unified_messages(
+        self,
+        message: str,
+        history: list[dict] | None,
+        session: Session | None,
+    ) -> list[dict]:
+        """System prompt (+ session context) + recent history + the user message."""
+        messages = [{"role": "system", "content": _build_system_prompt(session)}]
+        if session is not None:
+            messages += session.recent(SESSION_HISTORY_MESSAGES)
+        elif history:
+            messages += list(history)[-SESSION_HISTORY_MESSAGES:]
+        messages.append({"role": "user", "content": message})
+        return messages
+
+    def _model_round(self, messages: list[dict], stream: bool = False):
+        """
+        One model call over the full (read + propose) toolset.
+
+        Returns a message-like object with .content and .tool_calls;
+        with stream=True the chunk stream is assembled into the same
+        shape (see _assemble_stream).
+        """
+        response = self._chat_with_retry(
+            model=self.model,
+            max_tokens=1500,
+            tools=_openai_tools(ALL_TOOLS),
+            tool_choice="auto",
+            messages=messages,
+            stream=stream,
+        )
+        if not stream:
+            return response.choices[0].message
+        return self._assemble_stream(list(response))
+
+    @staticmethod
+    def _assemble_stream(chunks):
+        """Assemble a message-like object from OpenAI-style stream chunks."""
+        content_parts: list[str] = []
+        calls: dict[int, dict] = {}
+
+        for chunk in chunks:
+            if not getattr(chunk, "choices", None):
+                continue
+            delta = getattr(chunk.choices[0], "delta", None)
+            if delta is None:
+                continue
+
+            c = getattr(delta, "content", None)
+            if isinstance(c, str) and c:
+                content_parts.append(c)
+            elif isinstance(c, list):
+                for block in c:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        content_parts.append(block.get("text", ""))
+
+            for tc in getattr(delta, "tool_calls", None) or []:
+                slot = calls.setdefault(
+                    getattr(tc, "index", 0),
+                    {"id": "", "name": "", "arguments": ""},
+                )
+                tc_id = getattr(tc, "id", None)
+                if tc_id:
+                    slot["id"] = tc_id
+                fn = getattr(tc, "function", None)
+                if fn is not None:
+                    if getattr(fn, "name", None):
+                        slot["name"] = fn.name
+                    if getattr(fn, "arguments", None):
+                        slot["arguments"] += fn.arguments
+
+        tool_calls = [
+            SimpleNamespace(
+                id=slot["id"],
+                function=SimpleNamespace(
+                    name=slot["name"], arguments=slot["arguments"]
+                ),
+            )
+            for _, slot in sorted(calls.items())
+            if slot["name"]
+        ]
+        return SimpleNamespace(
+            content="".join(content_parts),
+            tool_calls=tool_calls or None,
+        )
+
+    @staticmethod
+    def _assistant_tool_message(m) -> dict:
+        """The assistant message to replay in the conversation."""
+        return {
+            "role": "assistant",
+            "content": _extract_content_text(m.content),
+            "tool_calls": [
+                {
+                    "id": call.id,
+                    "type": "function",
+                    "function": {
+                        "name": call.function.name,
+                        "arguments": call.function.arguments,
+                    },
+                }
+                for call in m.tool_calls
+            ],
+        }
+
+    def _execute_tool_calls(
+        self,
+        m,
+        messages: list[dict],
+        trace: list[dict],
+        proposals: list[dict],
+        calls_used: int,
+    ) -> int:
+        """
+        Run one round's tool calls (read tools and propose tools both
+        allowed), append their results, and collect proposals.
+
+        Enforces the per-request tool-call budget: once reached, further
+        calls return an error telling the model to answer with what it
+        has — no more warehouse statements.
+        """
+        for call in m.tool_calls:
+            try:
+                args = json.loads(call.function.arguments or "{}")
+            except json.JSONDecodeError:
+                args = {}
+
+            name = call.function.name
+
+            if calls_used >= MAX_REQUEST_TOOL_CALLS:
+                output = {
+                    "error": (
+                        "statement budget for this request reached — "
+                        "answer now with the results you already have"
+                    )
+                }
+            else:
+                try:
+                    if name in MANAGEMENT_DISPATCH:
+                        output = run_management_tool(name, args)
+                    else:
+                        output = run_tool(name, args)
+                    calls_used += 1
+                except Exception as exc:  # noqa: BLE001
+                    output = {"error": f"{type(exc).__name__}: {exc}"}
+
+            trace.append(
+                {
+                    "tool": name,
+                    "input": args,
+                    "row_count": output.get("row_count"),
+                    "output": output,
+                }
+            )
+
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": call.id,
+                    "name": name,
+                    "content": json.dumps(output, default=str)[:16000],
+                }
+            )
+
+            # A failed item (e.g. 'already exists') must not abort the
+            # batch; it is skipped and the model mentions it.
+            if "error" not in output and name in MANAGEMENT_DISPATCH:
+                proposals.extend(output.get("rows", []))
+
+        return calls_used
+
+    # -------------------------------------------------------------
+    # Streaming (the final answer renders progressively in the UI)
+    # -------------------------------------------------------------
+
+    def chat_stream(
+        self,
+        message: str,
+        history: list[dict] | None = None,
+        session: Session | None = None,
+        result_holder: dict | None = None,
+    ):
+        """
+        Streaming variant of chat(): runs the same unified loop, then
+        yields the final answer progressively. The completed AgentResult
+        (trace, proposals included) is placed into result_holder.
+
+        If anything fails before the first chunk is produced, this falls
+        back to the non-streaming chat() and yields its answer in one
+        chunk — safe because this loop never writes to the warehouse
+        (proposals only), so re-running it cannot double-apply anything.
+        """
+        streamed = False
+        try:
+            messages = self._unified_messages(message, history, session)
+            trace: list[dict] = []
+            proposals: list[dict] = []
+            calls_used = 0
+
+            for round_no in range(1, MAX_TOOL_ROUNDS + 1):
+                m = self._model_round(messages, stream=True)
+
+                if not m.tool_calls:
+                    answer = _extract_content_text(m.content).strip()
+                    result = AgentResult(
+                        answer, trace, round_no,
+                        f"Databricks · {self.model}",
+                        proposals[0] if proposals else None,
+                        [],
+                        proposals,
+                    )
+                    if session is not None and answer:
+                        session.record(message, answer, trace, proposals)
+                    if result_holder is not None:
+                        result_holder["result"] = result
+                    streamed = True
+                    yield from self._progressive(answer)
+                    return
+
+                messages.append(self._assistant_tool_message(m))
+                calls_used = self._execute_tool_calls(
+                    m, messages, trace, proposals, calls_used
+                )
+
+            answer = ("I could not finish that within the tool-call limit. "
+                      "Try a narrower question.")
+            result = AgentResult(
+                answer, trace, MAX_TOOL_ROUNDS,
+                f"Databricks · {self.model}",
+                proposals[0] if proposals else None,
+                [],
+                proposals,
+            )
+            if session is not None:
+                session.record(message, answer, trace, proposals)
+            if result_holder is not None:
+                result_holder["result"] = result
+            streamed = True
+            yield answer
+            return
+
+        except Exception:  # noqa: BLE001
+            if streamed:
+                raise
+            # Nothing was shown yet — safe to rerun non-streaming.
+            result = self.chat(message, history=history, session=session)
+            if result_holder is not None:
+                result_holder["result"] = result
+            yield result.answer
+
+    @staticmethod
+    def _progressive(text: str):
+        """Yield the final answer in short pieces for progressive display."""
+        piece = ""
+        for word in text.split(" "):
+            piece += (" " if piece else "") + word
+            if len(piece) >= 60:
+                yield piece + " "
+                piece = ""
+        if piece:
+            yield piece
 
     # -------------------------------------------------------------
     # Error handling
@@ -725,157 +868,18 @@ class PeopleLensAgent:
 
         return False
 
-    # -------------------------------------------------------------
-    # Groq
-    # -------------------------------------------------------------
-
-    def _run_groq(
+    def propose_management(
         self,
-        question: str,
-        history: list[dict],
+        request: str,
+        history: list[dict] | None = None,
+        session: Session | None = None,
     ) -> AgentResult:
+        """
+        Compatibility wrapper — the old separate management entry point.
+        Phase 2 has ONE chat loop; the model decides on its own that a
+        request is a change and calls the propose_* tools.
+        """
+        return self.chat(request, history=history, session=session)
 
-        messages = [
-            {
-                "role": "system",
-                "content": _build_system_prompt(),
-            }
-        ]
-
-        messages += list(history)
-
-        messages.append(
-            {
-                "role": "user",
-                "content": question,
-            }
-        )
-
-        trace: list[dict] = []
-
-        for round_no in range(
-            1,
-            MAX_TOOL_ROUNDS + 1,
-        ):
-
-            try:
-                response = self._chat_with_retry(
-                    model=self.model,
-                    max_tokens=1500,
-                    tools=_openai_tools(),
-                    tool_choice="auto",
-                    messages=messages,
-                )
-
-            except Exception as exc:  # noqa: BLE001
-                # 429 / rate-limit handling.
-                #
-                # The important part is that this returns immediately
-                # instead of allowing the SDK to perform repeated retries.
-                if self._is_rate_limit_error(exc):
-                    return AgentResult(
-                        answer=(
-                            "All models reached rate limit (tried 4 fallback models). "
-                            "Please wait a moment and try again."
-                        ),
-                        trace=trace,
-                        rounds=round_no,
-                        backend=f"Databricks · {self._get_model_display()}",
-                    )
-
-                return AgentResult(
-                    answer=(
-                        "I couldn't complete that request — a backend error "
-                        f"occurred ({type(exc).__name__}). Please try again, "
-                        "or rephrase the request."
-                    ),
-                    trace=trace,
-                    rounds=round_no,
-                    backend=f"Databricks · {self._get_model_display()}",
-                )
-
-            message = response.choices[0].message
-
-            # -----------------------------------------------------
-            # Final natural-language answer
-            # -----------------------------------------------------
-
-            if not message.tool_calls:
-                return AgentResult(
-                    _extract_content_text(message.content).strip(),
-                    trace,
-                    round_no,
-                    f"Databricks · {self.model}",
-                )
-
-            # -----------------------------------------------------
-            # Preserve assistant tool-call message
-            # -----------------------------------------------------
-
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": _extract_content_text(message.content),
-                    "tool_calls": [
-                        {
-                            "id": call.id,
-                            "type": "function",
-                            "function": {
-                                "name": call.function.name,
-                                "arguments": call.function.arguments,
-                            },
-                        }
-                        for call in message.tool_calls
-                    ],
-                }
-            )
-
-            # -----------------------------------------------------
-            # Execute requested read tools
-            # -----------------------------------------------------
-
-            for call in message.tool_calls:
-
-                try:
-                    args = json.loads(
-                        call.function.arguments or "{}"
-                    )
-
-                except json.JSONDecodeError:
-                    args = {}
-
-                output = run_tool(
-                    call.function.name,
-                    args,
-                )
-
-                trace.append(
-                    {
-                        "tool": call.function.name,
-                        "input": args,
-                        "row_count": output.get("row_count"),
-                        "output": output,
-                    }
-                )
-
-                messages.append(
-                    {
-                        "role": "tool",
-                        "tool_call_id": call.id,
-                        "name": call.function.name,
-                        "content": json.dumps(
-                            output,
-                            default=str,
-                        )[:16000],
-                    }
-                )
-
-        return AgentResult(
-            (
-                "I could not finish that within the tool-call limit. "
-                "Try a narrower question."
-            ),
-            trace,
-            MAX_TOOL_ROUNDS,
-            f"Databricks · {self.model}",
-        )
+    # (Phase 2) the old read-only _run_groq loop was removed: chat() and
+    # chat_stream() above are the single unified entry points.

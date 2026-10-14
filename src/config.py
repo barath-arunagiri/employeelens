@@ -59,7 +59,17 @@ DATA_MANAGEMENT_ADMINS = [
 ]
 DATA_MANAGEMENT_PIN = os.environ.get("DATA_MANAGEMENT_PIN", "")
 
-MAX_TOOL_ROUNDS = 6
+# Phase 2 unified-agent limits: the model may run up to 10 rounds of tool
+# calls per request, and no more than MAX_REQUEST_TOOL_CALLS tool executions
+# per request (each tool execution costs 1+ warehouse statements — this is
+# the hard per-request warehouse budget).
+MAX_TOOL_ROUNDS = 10
+MAX_REQUEST_TOOL_CALLS = 15
+
+# Conversation memory: a rolling session summary plus the most recent N
+# messages are sent to the model so "that person" and "the first two"
+# resolve without overflowing the context.
+SESSION_HISTORY_MESSAGES = 12
 
 # Trust the certifications column in the source spreadsheet as-is.
 # True  = every certification is treated as confirmed (what the team asked for)

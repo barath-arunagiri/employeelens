@@ -468,18 +468,48 @@ with ask_tab:
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            with st.spinner("Looking it up…"):
-                try:
-                    history = [{"role": m["role"], "content": m["content"]}
-                               for m in st.session_state.messages[:-1]]
-                    result = get_agent().ask(prompt, history=history)
-                    answer, trace = result.answer, result.trace
-                except Exception as exc:                        # noqa: BLE001
-                    answer, trace = (
-                            f"I hit an error while answering that "
-                            f"({type(exc).__name__}). Please try again."
-                        ), []
-            st.markdown(answer)
+            from src.agent.agent import Session
+
+            if "agent_session" not in st.session_state:
+                st.session_state.agent_session = Session()
+
+            holder = {}
+            trace = []
+            answer = ""
+            try:
+                # One agent, one session: questions AND change requests.
+                # The final answer streams progressively; the completed
+                # AgentResult (trace, proposals) arrives via result_holder.
+                answer = st.write_stream(
+                    get_agent().chat_stream(
+                        prompt,
+                        session=st.session_state.agent_session,
+                        result_holder=holder,
+                    )
+                )
+                result = holder.get("result")
+                trace = result.trace if result else []
+
+                # A change request typed in the Ask tab: proposals are
+                # prepared (never written) and staged for confirmation in
+                # the Data Management tab.
+                if result and result.proposals:
+                    st.session_state.management_proposals = result.proposals
+                    st.session_state.management_proposal = result.proposals[0]
+                    st.session_state.management_trace = result.trace
+                    st.session_state.management_message = result.answer
+                    st.info(
+                        f"{len(result.proposals)} proposal(s) prepared — review "
+                        "and confirm them in the **Data Management** tab. "
+                        "Nothing is written until you confirm."
+                    )
+            except Exception as exc:                            # noqa: BLE001
+                answer = (
+                    f"I hit an error while answering that "
+                    f"({type(exc).__name__}). Please try again."
+                )
+                st.markdown(answer)
+
             # Show trace only if debug mode is enabled
             if trace and st.session_state.get("debug_mode", False):
                 with st.expander(f"How this was answered — {len(trace)} tool call(s)"):
@@ -493,6 +523,8 @@ with ask_tab:
     if st.session_state.messages:
         if st.button("Clear conversation"):
             st.session_state.messages = []
+            from src.agent.agent import Session
+            st.session_state.agent_session = Session()  # fresh memory too
             st.rerun()
 
 # ---- Data Management
@@ -537,21 +569,19 @@ with management_tab:
             else:
                 with st.spinner("Preparing a proposed change..."):
                     try:
-                        result = get_agent().propose_management(
+                        from src.agent.agent import Session
+
+                        if "agent_session" not in st.session_state:
+                            st.session_state.agent_session = Session()
+                        # Same unified agent and same session as the Ask
+                        # tab — the model decides this is a change request.
+                        result = get_agent().chat(
                             request,
-                            history=st.session_state.get("management_history", [])[-12:],
+                            session=st.session_state.agent_session,
                         )
                         st.session_state.management_proposals = result.proposals or ([result.proposal] if result.proposal else [])
                         st.session_state.management_proposal = result.proposal
                         st.session_state.management_message = result.answer
-                        if "management_history" not in st.session_state:
-                            st.session_state.management_history = []
-                        st.session_state.management_history.append(
-                            {"role": "user", "content": request}
-                        )
-                        st.session_state.management_history.append(
-                            {"role": "assistant", "content": result.answer}
-                        )
                         st.session_state.management_trace = result.trace
                     except Exception as exc:                    # noqa: BLE001
                         st.session_state.management_proposal = None
@@ -648,6 +678,13 @@ with management_tab:
                 try:
                     results = repo.execute_proposals(proposals, confirmed_by=confirmed_email)
                     st.cache_data.clear()  # writes are live: refresh every page immediately
+                    # Feed the verified outcome back into the shared agent
+                    # session so follow-up turns know what really happened.
+                    if "agent_session" in st.session_state:
+                        st.session_state.agent_session.record_execution(
+                            [r for r in results if r.get("status") == "SUCCESS"],
+                            actor=confirmed_email,
+                        )
                     ok = [r for r in results if r.get("status") == "SUCCESS"]
                     failed = [r for r in results if r.get("status") != "SUCCESS"]
                     if ok:
