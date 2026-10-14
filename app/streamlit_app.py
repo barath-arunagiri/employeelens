@@ -4,8 +4,10 @@ Employeelens — Streamlit UI.
 Run from the project root:
     streamlit run app/streamlit_app.py
 
-Three tabs: Ask (the agent), Profile (employee 360), Explore (aggregates
-straight from the repository, no model involved).
+Left-side navigation (sidebar): Profile (employee 360), Team Structure
+(reporting hierarchy), Ask (the agent), Explore (aggregates, no model),
+Data Management (proposals + confirmation). Branding, statistics panel
+and all existing behaviour are unchanged.
 """
 from __future__ import annotations
 
@@ -214,6 +216,28 @@ st.markdown("""
         width: 1%;
     }
 
+    /* Left navigation (sidebar radio) — DataPattern style */
+    [data-testid="stSidebar"] [role="radiogroup"] label {
+        display: flex;
+        align-items: center;
+        padding: 8px 12px;
+        border-radius: 8px;
+        margin: 2px 0;
+        font-weight: 600;
+        cursor: pointer;
+        color: #033c67 !important;
+    }
+    [data-testid="stSidebar"] [role="radiogroup"] label:hover {
+        background: #eef4fa;
+    }
+    [data-testid="stSidebar"] [role="radiogroup"] label[data-checked="true"] {
+        background: #033c67;
+    }
+    [data-testid="stSidebar"] [role="radiogroup"] label[data-checked="true"] p,
+    [data-testid="stSidebar"] [role="radiogroup"] label[data-checked="true"] span {
+        color: #ffffff !important;
+    }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -291,6 +315,16 @@ def c_employees_without_skills():
     return repo.employees_without_skills()
 
 
+@st.cache_data(ttl=_CACHE_TTL, show_spinner=False)
+def c_team_structure():
+    return repo.get_team_structure()
+
+
+@st.cache_data(ttl=_CACHE_TTL, show_spinner=False)
+def c_employee_directory():
+    return repo.employee_directory()
+
+
 # Unity Catalog is the single source of truth; reads go through the cached
 # layer above so page switches don't re-query Delta tables on every rerun.
 
@@ -323,6 +357,12 @@ def get_agent():
 
 # ---------------------------------------------------------------- sidebar
 
+# A page switch requested from inside a page body (e.g. 'Open full profile')
+# is applied here, BEFORE the sidebar nav radio is instantiated — Streamlit
+# forbids changing a widget's state after the widget exists in the same run.
+if "pending_nav" in st.session_state:
+    st.session_state.nav = st.session_state.pop("pending_nav")
+
 with st.sidebar:
     # DataPattern logo (trimmed to exact content)
     logo_path = ROOT / "app" / "assets" / "Datapattern_logo.png"
@@ -338,6 +378,21 @@ with st.sidebar:
         )
     
     st.caption("Employee data assistant")
+
+    # ---- Left-side navigation ----
+    # Profile and Team Structure are the two primary pages; Ask, Explore
+    # and Data Management keep every existing feature as further pages.
+    st.markdown('<div style="color:#7a8ea3;font-size:12px;font-weight:700;'
+                'letter-spacing:1px;margin:10px 0 2px;">NAVIGATE</div>',
+                unsafe_allow_html=True)
+    st.radio(
+        "Navigation",
+        ["Profile", "Team Structure", "Ask", "Explore", "Data Management"],
+        label_visibility="collapsed",
+        key="nav",
+    )
+
+    st.divider()
 
     st.metric("Employees", STATS["employees"])
     cols = st.columns(2)
@@ -385,14 +440,12 @@ with st.sidebar:
                "and persists across app restarts.")
 
 
-# -------------------------------------------------------------------- tabs
-
-ask_tab, profile_tab, explore_tab, management_tab = st.tabs(
-    ["Ask", "Profile", "Explore", "Data Management"]
-)
+# ------------------------------------------------- navigation page routing
+# The sidebar radio (key="nav") decides which page renders below. Every
+# former tab body is preserved as a page — nothing was removed.
 
 # ---- Ask
-with ask_tab:
+if st.session_state.nav == "Ask":
     if "messages" not in st.session_state:
         st.session_state.messages = []
 
@@ -500,7 +553,7 @@ with ask_tab:
                     st.session_state.management_message = result.answer
                     st.info(
                         f"{len(result.proposals)} proposal(s) prepared — review "
-                        "and confirm them in the **Data Management** tab. "
+                        "and confirm them on the **Data Management** page. "
                         "Nothing is written until you confirm."
                     )
             except Exception as exc:                            # noqa: BLE001
@@ -528,7 +581,7 @@ with ask_tab:
             st.rerun()
 
 # ---- Data Management
-with management_tab:
+elif st.session_state.nav == "Data Management":
     st.markdown("#### Data Management")
     st.caption("Use one natural-language request for a change or read-only audit history. Changes require confirmation.")
 
@@ -712,13 +765,14 @@ with management_tab:
                 st.info("Change cancelled. No database update was made.")
 
 # ---- Profile
-with profile_tab:
+elif st.session_state.nav == "Profile":
     people = c_list_all_employees()
     labels = {f"{r['name']} — {r['employee_id']}": r["employee_id"]
               for _, r in people.iterrows()}
     st.caption(f"All {len(labels)} employees")
     choice = st.selectbox("Employee", sorted(labels), index=None,
-                          placeholder="Search for a name or employee id…")
+                          placeholder="Search for a name or employee id…",
+                          key="profile_choice")
 
     if choice:
         profile = c_employee_360(labels[choice])
@@ -772,8 +826,137 @@ with profile_tab:
                 for category, group in skills.groupby("category"):
                     st.markdown(f"*{category}* — " + ", ".join(group["skill"]))
 
+# ---- Team Structure (reporting hierarchy)
+elif st.session_state.nav == "Team Structure":
+    import html as _ts_html
+
+    def _ts_esc(v) -> str:
+        return _ts_html.escape(str(v) if v is not None else "")
+
+    st.markdown("#### Team structure")
+    st.caption("Reporting relationships, live from Unity Catalog. Expand a lead "
+               "to see their team; search to highlight anyone in the hierarchy.")
+
+    structure = c_team_structure()
+    directory = c_employee_directory()
+    dir_by_id = {str(r["employee_id"]): r for _, r in directory.iterrows()}
+
+    # lead_id -> list of structure rows, in the query's (lead name) order
+    members_by_lead: dict[str, list] = {}
+    lead_order: list[str] = []
+    for _, r in structure.iterrows():
+        lid = str(r["lead_id"])
+        if lid not in members_by_lead:
+            members_by_lead[lid] = []
+            lead_order.append(lid)
+        members_by_lead[lid].append(r)
+
+    # --- search + expand/collapse controls
+    search_col, expand_col = st.columns([3, 1])
+    with search_col:
+        term = (st.text_input(
+            "Find a person", placeholder="Name, designation or team…",
+            key="team_search", label_visibility="collapsed") or "").strip().lower()
+    with expand_col:
+        expand_all = st.toggle("Expand all", value=True, key="team_expand")
+
+    # --- inspect a person: their place in the structure + profile summary
+    person_labels = {f"{r['name']} — {str(r['employee_id'])}": str(r["employee_id"])
+                     for _, r in directory.iterrows()}
+    selected = st.selectbox(
+        "Inspect a person", [""] + sorted(person_labels),
+        key="team_person", label_visibility="collapsed",
+        placeholder="Inspect a person — choose a name to see their place in the structure…")
+    if selected:
+        pid = person_labels[selected]
+        person = dir_by_id.get(pid, {})
+        profile = c_employee_360(pid)
+        reports_to = profile.get("reports_to", [])
+        direct_reports = profile.get("direct_reports", [])
+        is_lead = pid in members_by_lead
+        details = st.columns([3, 2, 2, 2])
+        details[0].markdown(f"**Person**  \n{person.get('name') or profile.get('name')}")
+        details[1].markdown(f"**Position**  \n{person.get('position') or '—'}")
+        details[2].markdown(f"**Designation**  \n{person.get('designation') or '—'}")
+        details[3].markdown(f"**Team**  \n{person.get('team') or '—'}")
+        place = (
+            "**Place in the structure** — reports to "
+            + (f"**{', '.join(reports_to)}**" if reports_to else "*(no lead recorded)*")
+            + (f" · leads a team of **{len(members_by_lead[pid])}**" if is_lead else "")
+            + (f" · **{len(direct_reports)}** direct report(s)" if direct_reports else "")
+        )
+        st.markdown(place)
+        st.caption(f"{len(profile.get('skills', []))} skill(s) · "
+                   f"{len(profile.get('projects', []))} project(s) · "
+                   f"{len(profile.get('certifications', []))} certification(s)")
+        if st.button("Open full profile →", key=f"open_profile_{pid}", type="primary"):
+            st.session_state.profile_choice = (
+                f"{person.get('name') or profile.get('name')} — {pid}")
+            st.session_state.pending_nav = "Profile"
+            st.rerun()
+        st.divider()
+
+    # --- hierarchy: one expander per lead, connected member cards inside
+    st.markdown(f"**{len(lead_order)} team lead(s) · {len(structure)} reporting link(s)**")
+    for lid in lead_order:
+        lead = dir_by_id.get(lid, {})
+        rows = members_by_lead[lid]
+        lead_hit = bool(term) and (
+            term in str(lead.get("name", "")).lower()
+            or term in str(lead.get("designation") or "").lower()
+            or term in str(lead.get("team") or "").lower())
+
+        card_rows = []
+        any_member_hit = False
+        for r in rows:
+            m = dir_by_id.get(str(r["member_id"]), {})
+            hit = bool(term) and (
+                term in str(m.get("name", "")).lower()
+                or term in str(m.get("designation") or "").lower()
+                or term in str(m.get("team") or "").lower())
+            any_member_hit = any_member_hit or hit
+            if not term or lead_hit or hit:
+                card_rows.append((r, m, hit))
+
+        if term and not (lead_hit or any_member_hit):
+            continue  # nothing in this team matches the search
+
+        title = (f"{lead.get('name', lid)} · {lead.get('position') or 'Lead'}"
+                 f" · {lead.get('team') or ''} — {len(rows)} member(s)")
+        with st.expander(title, expanded=expand_all or bool(term)):
+            cards = []
+            for r, m, hit in card_rows:
+                mid = str(r["member_id"])
+                badge = ""
+                if mid in members_by_lead:
+                    badge = ("<span style='font-size:11px;color:#f46902;font-weight:700;"
+                             "background:#fdf1e7;border-radius:10px;padding:1px 8px;'>"
+                             f"leads {len(members_by_lead[mid])}</span>")
+                border = "#f46902" if (hit and term) else "#d7e3ef"
+                meta = " · ".join(str(x) for x in (
+                    m.get("position") or "", m.get("designation") or "", m.get("team") or "") if x)
+                cards.append(
+                    f"<div style='border-left:3px solid {border};background:#f8f9fa;"
+                    f"border-radius:6px;padding:8px 12px;margin:4px 0 4px 14px;'>"
+                    f"<b style='color:#033c67;'>{_ts_esc(m.get('name') or r['member_name'])}</b> {badge}"
+                    + (f"<br><span style='font-size:13px;color:#4a6a86;'>{_ts_esc(meta)}</span>" if meta else "")
+                    + "</div>")
+            st.markdown(
+                "<div style='border-left:2px solid #cfe0ef;padding-left:2px;'>"
+                + "".join(cards) + "</div>", unsafe_allow_html=True)
+
+    # --- people with no reporting line (real data, shown as-is)
+    linked = ({str(x) for x in structure["member_id"]}
+              | {str(x) for x in structure["lead_id"]})
+    unlinked = [{"Name": r["name"], "ID": r["employee_id"],
+                 "Position": r.get("position") or "—", "Team": r.get("team") or "—"}
+                for _, r in directory.iterrows() if str(r["employee_id"]) not in linked]
+    if unlinked:
+        with st.expander(f"No reporting line recorded ({len(unlinked)})", expanded=False):
+            st.dataframe(pd.DataFrame(unlinked), hide_index=True, use_container_width=True)
+
 # ---- Explore (dashboard view)
-with explore_tab:
+elif st.session_state.nav == "Explore":
     import altair as alt
 
     st.markdown("#### Team dashboard")

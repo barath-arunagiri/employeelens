@@ -1144,6 +1144,15 @@ def list_all_employees() -> pd.DataFrame:
     )
 
 
+def employee_directory() -> pd.DataFrame:
+    """Flat directory: one row per employee with position, designation and
+    team. Powers the Team Structure page's person cards and search."""
+    return q(
+        "SELECT employee_id, name, position, designation, team "
+        "FROM employees ORDER BY name"
+    )
+
+
 def find_employees(skills: list[str] | None = None,
                    projects: list[str] | None = None,
                    certifications: list[str] | None = None,
