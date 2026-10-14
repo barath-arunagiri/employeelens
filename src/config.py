@@ -34,12 +34,17 @@ VALID_EMAIL_DOMAIN = "@datapattern.ai"
 
 # Multi-model fallback: if one model hits rate limit, automatically try the next.
 # This prevents the agent from failing when a single model is rate-limited.
-# Only includes models that exist in this workspace (verified via serving_endpoints API)
+# ONLY models verified to make real OpenAI-style tool calls with this agent's
+# prompts (tested 2026-10-14 with the clone-skills prompt):
+#   gpt-oss-120b, gpt-oss-20b  -> proper search-then-propose flow
+#   llama-4-maverick -> narrates tool calls as text instead of executing them
+#   llama-3-3-70b / qwen3-next-80b -> skip name resolution, proposals fail
+#   deepseek-v4-flash -> no tool calls at all
+# Broken models must NOT appear here even as fallbacks: a fallback that
+# produces a wrong flow is worse than a rate-limit error.
 DATABRICKS_MODELS = [
-    "databricks-llama-4-maverick",              # Primary: fast, good quality
-    "databricks-meta-llama-3-3-70b-instruct",   # Fallback 1: larger context
-    "databricks-qwen3-next-80b-a3b-instruct",   # Fallback 2: powerful alternative
-    "databricks-deepseek-v4-flash-0731",        # Fallback 3: fast inference
+    "databricks-gpt-oss-120b",   # Primary: verified function calling
+    "databricks-gpt-oss-20b",    # Fallback: verified function calling
 ]
 
 # Legacy single-model config (for backward compatibility)
