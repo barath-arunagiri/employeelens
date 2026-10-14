@@ -381,10 +381,26 @@ TOOLS = [
             },
         },
     },
+    {
+        "name": "get_team_structure",
+        "description": (
+            "Read-only org view: every lead/manager with their direct "
+            "reports (team members). One call for 'team lead wise members', "
+            "'who reports to whom', or org-structure questions."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+        },
+    },
 ]
 
 
 DISPATCH = {
+    "get_team_structure": lambda a: _frame(
+        repo.get_team_structure()
+    ),
+
     "search_employees": lambda a: _frame(
         repo.search_employees(a["name"])
     ),
@@ -484,6 +500,7 @@ _TOOLS_OFFERED = (
     "get_employee_360",
     "find_employees",
     "run_sql",
+    "get_team_structure",
     "get_audit_history",
 )
 TOOLS = [t for t in TOOLS if t["name"] in _TOOLS_OFFERED]

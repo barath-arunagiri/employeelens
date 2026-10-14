@@ -140,8 +140,6 @@ def _validate_employee_value(field: str, value: str) -> str:
                     if len(v_ns) >= 3 and v_ns in t.lower().replace(" ", "")]
             # Suggest only when the hint narrows things down (2 candidates);
             # with 3+ the 'Real teams' list already says it all.
-            # Suggest only when the hint narrows things down (2 candidates);
-            # with 3+ the 'Real teams' list already says it all.
             hint = f" Did you mean: {', '.join(subs)}?" if len(subs) == 2 else ""
             raise ValueError(
                 f"team '{value}' is not a real team.{hint} Real teams: "
@@ -388,25 +386,26 @@ def propose_move_project(employee_id: str, from_project: str, to_project: str,
         )
     if old is None:
         raise ValueError(f"project '{from_project}' was not found for {employee_id}")
-        to_project = _validate_employee_value("to_project", to_project)
-        # preserve the project's existing type unless the caller explicitly
-        # asks to change it — same fallback pattern as client/technologies/role
-        norm_type = (project_type or old[4] or "main").strip().lower()
+    to_project = _validate_employee_value("to_project", to_project)
+    # preserve the project's existing type unless the caller explicitly
+    # asks to change it — same fallback pattern as client/technologies/role
+    norm_type = (project_type or old[4] or "main").strip().lower()
     if norm_type not in {"main", "support"}:
         raise ValueError("project_type must be 'main' or 'support'")
-    if uc.fetchone(
+    duplicate = uc.fetchone(
         "SELECT 1 FROM employee_projects WHERE employee_id = ? AND lower(project) = lower(?) "
             "AND lower(COALESCE(project_type, 'main')) = lower(?)",
-            [employee_id, to_project.strip(), norm_type],
-        ).fetchone():
-            raise ValueError(f"project '{to_project}' already exists for {employee_id}")
+        [employee_id, to_project.strip(), norm_type],
+    )
+    if duplicate:
+        raise ValueError(f"project '{to_project}' already exists for {employee_id}")
     return {
-            "operation": "MOVE", "table": "employee_projects", "employee_id": employee_id,
-            "field": "project", "old_value": old[0], "new_value": to_project.strip(),
-            "client": client.strip() or old[1], "technologies": technologies.strip() or old[2],
-            "role": role.strip() or old[3], "project_type": norm_type,
-            "requires_confirmation": True,
-        }
+        "operation": "MOVE", "table": "employee_projects", "employee_id": employee_id,
+        "field": "project", "old_value": old[0], "new_value": to_project.strip(),
+        "client": client.strip() or old[1], "technologies": technologies.strip() or old[2],
+        "role": role.strip() or old[3], "project_type": norm_type,
+        "requires_confirmation": True,
+    }
 
 
 def propose_create_employee(employee_id: str, name: str, email: str = "",
@@ -982,6 +981,28 @@ def search_employees(name: str, limit: int = 10) -> pd.DataFrame:
 
 def get_employee(employee_id: str) -> pd.DataFrame:
     return q("SELECT employee_id, name, email, position, designation, team FROM employees WHERE employee_id = ?", [employee_id])
+
+
+def get_team_structure() -> pd.DataFrame:
+    """Every lead/manager and their direct reports — one row per report.
+
+    Answers 'team lead wise members' / 'who reports to whom' / org-structure
+    questions in a single call, instead of one get_direct_reports per
+    manager. team_members counts each lead's reports.
+    """
+    return q(
+        """
+        SELECT mgr.employee_id AS lead_id, mgr.name AS lead_name,
+               mgr.position AS lead_position, e.team AS team,
+               COUNT(*) OVER (PARTITION BY mgr.employee_id) AS team_members,
+               e.employee_id AS member_id, e.name AS member_name,
+               e.position AS member_position
+        FROM employee_managers m
+        JOIN employees mgr ON mgr.employee_id = m.reporting_id
+        JOIN employees e ON e.employee_id = m.employee_id
+        ORDER BY mgr.name, e.name
+        """
+    )
 
 
 # ---------------------------------------------------------------- profile

@@ -192,6 +192,7 @@ HOW TO WORK
 - Ground every fact in tool results from this conversation. Never answer an employee-data question from memory — call a tool first.
 - When the user names a person, resolve them with search_employees (names are ambiguous; several people share first names). If several match, list them (Name | ID | Team) and ask which one they mean.
 - find_employees answers combined filters (skills, certifications, projects, teams, positions, manager) in one call; project_type narrows main vs support.
+- get_team_structure answers 'team lead wise members', 'who reports to whom', and org-structure questions in ONE call — leads with their members grouped; display grouped by lead with each lead's member count.
 - run_sql is the catch-all for anything else (cross-table counts, distinct values, unusual filters). It is a guarded single read-only SELECT; a LIMIT is always applied.
 - get_audit_history answers change-history questions ("who changed X", "what changed on <id>", recent changes).
 
