@@ -811,25 +811,28 @@ with profile_tab:
         TEAM_ORDER = ["Data", "Gen AI", "Cyber", "Sales", "Presales", "Resourcing"]
 
         def _role(rec) -> str:
-            # Role only — designation first, position as fallback
+            # Member role only — designation first, position as fallback
             return str((rec.get("designation") if rec.get("designation")
                         else rec.get("position")) or "").strip()
 
-        def _card(rec, name: str) -> str:
-            role = _role(rec)
+        def _position(rec) -> str:
+            # Position first (what team leads and managers are known by)
+            return str((rec.get("position") if rec.get("position")
+                        else rec.get("designation")) or "").strip()
+
+        def _card(rec, name: str, subtitle=None) -> str:
+            sub = _role(rec) if subtitle is None else subtitle
             return ("<div style='border-left:3px solid #d7e3ef;background:#f8f9fa;"
                     "border-radius:6px;padding:8px 12px;margin:4px 0;'>"
                     f"<b style='color:#033c67;'>{_ts_esc(name)}</b>"
                     + (f"<br><span style='font-size:13px;color:#4a6a86;'>"
-                       f"{_ts_esc(role)}</span>" if role else "")
+                       f"{_ts_esc(sub)}</span>" if sub else "")
                     + "</div>")
 
         def _is_team_lead(rec) -> bool:
             return "team lead" in str(rec.get("position") or "").lower()
 
         def _is_manager(rec) -> bool:
-            # Manager-level rows (e.g. Operational Manager) lead other leads
-            # and are not displayed as part of a team.
             return "manager" in str(rec.get("position") or "").lower()
 
         # lead_id -> direct-report rows (real reporting links only)
@@ -847,15 +850,42 @@ with profile_tab:
         ordered = [t for t in TEAM_ORDER if t in team_dir] \
             + sorted(t for t in team_dir if t not in TEAM_ORDER)
 
+        # Leadership strip above the teams: managers / operational leads on the
+        # left (employee-id order), HR on the top right. Real people from the
+        # directory — not repeated inside the team sections below.
+        leadership = sorted(
+            [r for _, r in directory.iterrows()
+             if ("manager" in str(r.get("position") or "").lower()
+                 or "operational" in str(r.get("position") or "").lower())
+             and not _is_team_lead(r)],
+            key=lambda r: str(r["employee_id"]))
+        hr_people = sorted(team_dir.get("HR", []),
+                           key=lambda r: str(r["employee_id"]))
+        strip_ids = {str(r["employee_id"]) for r in leadership + hr_people}
+
+        strip_l, strip_r = st.columns([3, 1])
+        with strip_l:
+            lcols = st.columns(len(leadership)) if leadership else []
+            for col, r in zip(lcols, leadership):
+                with col:
+                    st.markdown(_card(r, r["name"], _position(r)),
+                                unsafe_allow_html=True)
+        with strip_r:
+            for r in hr_people:
+                st.markdown(_card(r, r["name"], _position(r)),
+                            unsafe_allow_html=True)
+
         for team in ordered:
+            if team == "HR":
+                continue  # HR is shown in the strip on the top right
             # Team members ordered by employee id (leads included, in id order)
             people = sorted(team_dir[team], key=lambda r: str(r["employee_id"]))
             leads = [r for r in people if _is_team_lead(r)]
-            # Only manager-level people who actually head a reporting group
-            # (e.g. an Operational Manager leading the leads) are left out;
-            # managers without a group stay as ordinary member cards.
+            # Leadership-strip people are not repeated inside a team; manager-
+            # level people who head a reporting group are not team members.
             shown = {str(r["employee_id"]) for r in people
-                     if _is_manager(r) and str(r["employee_id"]) in members_by_lead}
+                     if str(r["employee_id"]) in strip_ids
+                     or (_is_manager(r) and str(r["employee_id"]) in members_by_lead)}
 
             st.markdown(f"#### {team} Team")
             if leads:
@@ -864,8 +894,7 @@ with profile_tab:
             else:
                 st.caption("No team lead recorded")
 
-            # Lead-wise groups from real reporting links, two per row so the
-            # next lead and their members fill the space beside the previous.
+            # Lead-wise groups from real reporting links, largest team first.
             lead_groups = []
             for r in leads:
                 lid = str(r["employee_id"])
@@ -875,14 +904,17 @@ with profile_tab:
                 lead_groups.append((lid, r, rows))
                 shown.add(lid)
                 shown.update(str(x["member_id"]) for x in rows)
+            lead_groups.sort(key=lambda g: len(g[2]), reverse=True)
 
+            # Two per row so the next lead and their members fill the space
+            # beside the previous one. Leads show their position only.
             for i in range(0, len(lead_groups), 2):
                 pair = st.columns(2)
                 for col, (lid, lead, rows) in zip(pair, lead_groups[i:i + 2]):
                     with col:
                         st.markdown(
-                            f"**{lead.get('name', lid)}** · {_role(lead) or 'Team Lead'}"
-                            f" — {len(rows)} member(s)")
+                            f"**{lead.get('name', lid)}** · "
+                            f"{_position(lead) or 'Team Lead'} — {len(rows)} member(s)")
                         st.markdown(
                             "<div style='border-left:2px solid #cfe0ef;padding-left:2px;'>"
                             + "".join(_card(dir_by_id.get(str(x["member_id"]), {}),
@@ -891,14 +923,11 @@ with profile_tab:
 
             # Remaining team members (no reporting line recorded) — role only
             rest = [r for r in people if str(r["employee_id"]) not in shown]
-            if rest:
-                if lead_groups:
-                    st.caption("Other team members")
-                for i in range(0, len(rest), 3):
-                    cols = st.columns(3)
-                    for col, r in zip(cols, rest[i:i + 3]):
-                        with col:
-                            st.markdown(_card(r, r["name"]), unsafe_allow_html=True)
+            for i in range(0, len(rest), 3):
+                cols = st.columns(3)
+                for col, r in zip(cols, rest[i:i + 3]):
+                    with col:
+                        st.markdown(_card(r, r["name"]), unsafe_allow_html=True)
 
 # ---- Explore (dashboard view)
 with explore_tab:
