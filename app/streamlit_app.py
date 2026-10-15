@@ -811,14 +811,14 @@ with profile_tab:
         TEAM_ORDER = ["Data", "Gen AI", "Cyber", "Sales", "Presales", "Resourcing"]
 
         def _role(rec) -> str:
-            # Member role only — designation first, position as fallback
-            return str((rec.get("designation") if rec.get("designation")
-                        else rec.get("position")) or "").strip()
-
-        def _position(rec) -> str:
-            # Position first (what team leads and managers are known by)
-            return str((rec.get("position") if rec.get("position")
-                        else rec.get("designation")) or "").strip()
+            # The same role string the Employee profile shows: senior
+            # positions combine position and designation, other positions
+            # show as-is, designation is the fallback.
+            pos = str(rec.get("position") or "").strip()
+            des = str(rec.get("designation") or "").strip()
+            if pos and "senior" in pos.lower():
+                return f"{pos} - {des}" if des else pos
+            return pos or des
 
         def _card(rec, name: str, subtitle=None) -> str:
             sub = _role(rec) if subtitle is None else subtitle
@@ -868,11 +868,11 @@ with profile_tab:
             lcols = st.columns(len(leadership)) if leadership else []
             for col, r in zip(lcols, leadership):
                 with col:
-                    st.markdown(_card(r, r["name"], _position(r)),
+                    st.markdown(_card(r, r["name"], _role(r)),
                                 unsafe_allow_html=True)
         with strip_r:
             for r in hr_people:
-                st.markdown(_card(r, r["name"], _position(r)),
+                st.markdown(_card(r, r["name"], _role(r)),
                             unsafe_allow_html=True)
 
         for team in ordered:
@@ -907,16 +907,14 @@ with profile_tab:
             lead_groups.sort(key=lambda g: len(g[2]), reverse=True)
 
             # Two per row so the next lead and their members fill the space
-            # beside the previous one. Leads show position and their role.
+            # beside the previous one. Leads show the role from their profile.
             for i in range(0, len(lead_groups), 2):
                 pair = st.columns(2)
                 for col, (lid, lead, rows) in zip(pair, lead_groups[i:i + 2]):
                     with col:
                         lead_line = (f"**{lead.get('name', lid)}** · "
-                                     f"{_position(lead) or 'Team Lead'}")
-                        if _role(lead) and _role(lead).lower() != (_position(lead) or "").lower():
-                            lead_line += f" · {_role(lead)}"
-                        lead_line += f" — {len(rows)} member(s)"
+                                     f"{_role(lead) or 'Team Lead'}"
+                                     f" — {len(rows)} member(s)")
                         st.markdown(lead_line)
                         st.markdown(
                             "<div style='border-left:2px solid #cfe0ef;padding-left:2px;'>"
@@ -926,7 +924,7 @@ with profile_tab:
 
             # Remaining team members (no reporting line recorded) — role only
             rest = [r for r in people if str(r["employee_id"]) not in shown]
-            if rest:
+            if rest and lead_groups:
                 st.caption("Other members")
             for i in range(0, len(rest), 3):
                 cols = st.columns(3)
