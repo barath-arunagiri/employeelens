@@ -907,14 +907,17 @@ with profile_tab:
             lead_groups.sort(key=lambda g: len(g[2]), reverse=True)
 
             # Two per row so the next lead and their members fill the space
-            # beside the previous one. Leads show their position only.
+            # beside the previous one. Leads show position and their role.
             for i in range(0, len(lead_groups), 2):
                 pair = st.columns(2)
                 for col, (lid, lead, rows) in zip(pair, lead_groups[i:i + 2]):
                     with col:
-                        st.markdown(
-                            f"**{lead.get('name', lid)}** · "
-                            f"{_position(lead) or 'Team Lead'} — {len(rows)} member(s)")
+                        lead_line = (f"**{lead.get('name', lid)}** · "
+                                     f"{_position(lead) or 'Team Lead'}")
+                        if _role(lead) and _role(lead).lower() != (_position(lead) or "").lower():
+                            lead_line += f" · {_role(lead)}"
+                        lead_line += f" — {len(rows)} member(s)"
+                        st.markdown(lead_line)
                         st.markdown(
                             "<div style='border-left:2px solid #cfe0ef;padding-left:2px;'>"
                             + "".join(_card(dir_by_id.get(str(x["member_id"]), {}),
@@ -923,6 +926,8 @@ with profile_tab:
 
             # Remaining team members (no reporting line recorded) — role only
             rest = [r for r in people if str(r["employee_id"]) not in shown]
+            if rest:
+                st.caption("Other members")
             for i in range(0, len(rest), 3):
                 cols = st.columns(3)
                 for col, r in zip(cols, rest[i:i + 3]):
