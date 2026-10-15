@@ -796,133 +796,109 @@ with profile_tab:
                     for category, group in skills.groupby("category"):
                         st.markdown(f"*{category}* — " + ", ".join(group["skill"]))
 
-    else:  # Team structure view (reporting hierarchy)
+    else:  # Team structure view — team-lead-wise, in the organisation's team order
         import html as _ts_html
 
         def _ts_esc(v) -> str:
             return _ts_html.escape(str(v) if v is not None else "")
 
-        st.markdown("#### Team structure")
-        st.caption("Reporting relationships, live from Unity Catalog. Expand a lead "
-                   "to see their team; search to highlight anyone in the hierarchy.")
-
         structure = c_team_structure()
         directory = c_employee_directory()
         dir_by_id = {str(r["employee_id"]): r for _, r in directory.iterrows()}
 
-        # lead_id -> list of structure rows, in the query's (lead name) order
+        # The teams in the order the organisation wants them listed; any other
+        # team present in the data is appended after (nothing is hidden).
+        TEAM_ORDER = ["Data", "Gen AI", "Cyber", "Sales", "Presales", "Resourcing"]
+
+        def _role(rec) -> str:
+            # Role only — designation first, position as fallback
+            return str((rec.get("designation") if rec.get("designation")
+                        else rec.get("position")) or "").strip()
+
+        def _card(rec, name: str) -> str:
+            role = _role(rec)
+            return ("<div style='border-left:3px solid #d7e3ef;background:#f8f9fa;"
+                    "border-radius:6px;padding:8px 12px;margin:4px 0;'>"
+                    f"<b style='color:#033c67;'>{_ts_esc(name)}</b>"
+                    + (f"<br><span style='font-size:13px;color:#4a6a86;'>"
+                       f"{_ts_esc(role)}</span>" if role else "")
+                    + "</div>")
+
+        def _is_team_lead(rec) -> bool:
+            return "team lead" in str(rec.get("position") or "").lower()
+
+        def _is_manager(rec) -> bool:
+            # Manager-level rows (e.g. Operational Manager) lead other leads
+            # and are not displayed as part of a team.
+            return "manager" in str(rec.get("position") or "").lower()
+
+        # lead_id -> direct-report rows (real reporting links only)
         members_by_lead: dict[str, list] = {}
-        lead_order: list[str] = []
         for _, r in structure.iterrows():
-            lid = str(r["lead_id"])
-            if lid not in members_by_lead:
-                members_by_lead[lid] = []
-                lead_order.append(lid)
-            members_by_lead[lid].append(r)
+            members_by_lead.setdefault(str(r["lead_id"]), []).append(r)
 
-        # --- search + expand/collapse controls
-        search_col, expand_col = st.columns([3, 1])
-        with search_col:
-            term = (st.text_input(
-                "Find a person", placeholder="Name, designation or team…",
-                key="team_search", label_visibility="collapsed") or "").strip().lower()
-        with expand_col:
-            expand_all = st.toggle("Expand all", value=True, key="team_expand")
+        # Team directory from the team column, keyed without the ' Team' suffix
+        team_dir: dict[str, list] = {}
+        for _, r in directory.iterrows():
+            team = str(r.get("team") or "").replace(" Team", "").strip()
+            if team:
+                team_dir.setdefault(team, []).append(r)
 
-        # --- inspect a person: their place in the structure + profile summary
-        person_labels = {f"{r['name']} — {str(r['employee_id'])}": str(r["employee_id"])
-                         for _, r in directory.iterrows()}
-        selected = st.selectbox(
-            "Inspect a person", [""] + sorted(person_labels),
-            key="team_person", label_visibility="collapsed",
-            placeholder="Inspect a person — choose a name to see their place in the structure…")
-        if selected:
-            pid = person_labels[selected]
-            person = dir_by_id.get(pid, {})
-            profile = c_employee_360(pid)
-            reports_to = profile.get("reports_to", [])
-            direct_reports = profile.get("direct_reports", [])
-            is_lead = pid in members_by_lead
-            details = st.columns([3, 2, 2, 2])
-            details[0].markdown(f"**Person**  \n{person.get('name') or profile.get('name')}")
-            details[1].markdown(f"**Position**  \n{person.get('position') or '—'}")
-            details[2].markdown(f"**Designation**  \n{person.get('designation') or '—'}")
-            details[3].markdown(f"**Team**  \n{person.get('team') or '—'}")
-            place = (
-                "**Place in the structure** — reports to "
-                + (f"**{', '.join(reports_to)}**" if reports_to else "*(no lead recorded)*")
-                + (f" · leads a team of **{len(members_by_lead[pid])}**" if is_lead else "")
-                + (f" · **{len(direct_reports)}** direct report(s)" if direct_reports else "")
-            )
-            st.markdown(place)
-            st.caption(f"{len(profile.get('skills', []))} skill(s) · "
-                       f"{len(profile.get('projects', []))} project(s) · "
-                       f"{len(profile.get('certifications', []))} certification(s)")
-            if st.button("Open full profile →", key=f"open_profile_{pid}", type="primary"):
-                st.session_state.profile_choice = (
-                    f"{person.get('name') or profile.get('name')} — {pid}")
-                st.session_state.pending_profile_view = "Employee profile"
-                st.rerun()
-            st.divider()
+        ordered = [t for t in TEAM_ORDER if t in team_dir] \
+            + sorted(t for t in team_dir if t not in TEAM_ORDER)
 
-        # --- hierarchy: one expander per lead, connected member cards inside
-        st.markdown(f"**{len(lead_order)} team lead(s) · {len(structure)} reporting link(s)**")
-        for lid in lead_order:
-            lead = dir_by_id.get(lid, {})
-            rows = members_by_lead[lid]
-            lead_hit = bool(term) and (
-                term in str(lead.get("name", "")).lower()
-                or term in str(lead.get("designation") or "").lower()
-                or term in str(lead.get("team") or "").lower())
+        for team in ordered:
+            # Team members ordered by employee id (leads included, in id order)
+            people = sorted(team_dir[team], key=lambda r: str(r["employee_id"]))
+            leads = [r for r in people if _is_team_lead(r)]
+            # Only manager-level people who actually head a reporting group
+            # (e.g. an Operational Manager leading the leads) are left out;
+            # managers without a group stay as ordinary member cards.
+            shown = {str(r["employee_id"]) for r in people
+                     if _is_manager(r) and str(r["employee_id"]) in members_by_lead}
 
-            card_rows = []
-            any_member_hit = False
-            for r in rows:
-                m = dir_by_id.get(str(r["member_id"]), {})
-                hit = bool(term) and (
-                    term in str(m.get("name", "")).lower()
-                    or term in str(m.get("designation") or "").lower()
-                    or term in str(m.get("team") or "").lower())
-                any_member_hit = any_member_hit or hit
-                if not term or lead_hit or hit:
-                    card_rows.append((r, m, hit))
+            st.markdown(f"#### {team} Team")
+            if leads:
+                st.caption("Team lead" + ("s" if len(leads) > 1 else "") + ": "
+                           + ", ".join(str(r["name"]) for r in leads))
+            else:
+                st.caption("No team lead recorded")
 
-            if term and not (lead_hit or any_member_hit):
-                continue  # nothing in this team matches the search
+            # Lead-wise groups from real reporting links, two per row so the
+            # next lead and their members fill the space beside the previous.
+            lead_groups = []
+            for r in leads:
+                lid = str(r["employee_id"])
+                rows = members_by_lead.get(lid, [])
+                if not rows:
+                    continue  # lead without recorded reports shows as a member below
+                lead_groups.append((lid, r, rows))
+                shown.add(lid)
+                shown.update(str(x["member_id"]) for x in rows)
 
-            title = (f"{lead.get('name', lid)} · {lead.get('position') or 'Lead'}"
-                     f" · {lead.get('team') or ''} — {len(rows)} member(s)")
-            with st.expander(title, expanded=expand_all or bool(term)):
-                cards = []
-                for r, m, hit in card_rows:
-                    mid = str(r["member_id"])
-                    badge = ""
-                    if mid in members_by_lead:
-                        badge = ("<span style='font-size:11px;color:#f46902;font-weight:700;"
-                                 "background:#fdf1e7;border-radius:10px;padding:1px 8px;'>"
-                                 f"leads {len(members_by_lead[mid])}</span>")
-                    border = "#f46902" if (hit and term) else "#d7e3ef"
-                    meta = " · ".join(str(x) for x in (
-                        m.get("position") or "", m.get("designation") or "", m.get("team") or "") if x)
-                    cards.append(
-                        f"<div style='border-left:3px solid {border};background:#f8f9fa;"
-                        f"border-radius:6px;padding:8px 12px;margin:4px 0 4px 14px;'>"
-                        f"<b style='color:#033c67;'>{_ts_esc(m.get('name') or r['member_name'])}</b> {badge}"
-                        + (f"<br><span style='font-size:13px;color:#4a6a86;'>{_ts_esc(meta)}</span>" if meta else "")
-                        + "</div>")
-                st.markdown(
-                    "<div style='border-left:2px solid #cfe0ef;padding-left:2px;'>"
-                    + "".join(cards) + "</div>", unsafe_allow_html=True)
+            for i in range(0, len(lead_groups), 2):
+                pair = st.columns(2)
+                for col, (lid, lead, rows) in zip(pair, lead_groups[i:i + 2]):
+                    with col:
+                        st.markdown(
+                            f"**{lead.get('name', lid)}** · {_role(lead) or 'Team Lead'}"
+                            f" — {len(rows)} member(s)")
+                        st.markdown(
+                            "<div style='border-left:2px solid #cfe0ef;padding-left:2px;'>"
+                            + "".join(_card(dir_by_id.get(str(x["member_id"]), {}),
+                                            x["member_name"]) for x in rows)
+                            + "</div>", unsafe_allow_html=True)
 
-        # --- people with no reporting line (real data, shown as-is)
-        linked = ({str(x) for x in structure["member_id"]}
-                  | {str(x) for x in structure["lead_id"]})
-        unlinked = [{"Name": r["name"], "ID": r["employee_id"],
-                     "Position": r.get("position") or "—", "Team": r.get("team") or "—"}
-                    for _, r in directory.iterrows() if str(r["employee_id"]) not in linked]
-        if unlinked:
-            with st.expander(f"No reporting line recorded ({len(unlinked)})", expanded=False):
-                st.dataframe(pd.DataFrame(unlinked), hide_index=True, use_container_width=True)
+            # Remaining team members (no reporting line recorded) — role only
+            rest = [r for r in people if str(r["employee_id"]) not in shown]
+            if rest:
+                if lead_groups:
+                    st.caption("Other team members")
+                for i in range(0, len(rest), 3):
+                    cols = st.columns(3)
+                    for col, r in zip(cols, rest[i:i + 3]):
+                        with col:
+                            st.markdown(_card(r, r["name"]), unsafe_allow_html=True)
 
 # ---- Explore (dashboard view)
 with explore_tab:
