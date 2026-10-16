@@ -184,6 +184,7 @@ THE DATA
 Tables in workspace.employeelens: employees (employee_id, name, email, position, team, designation; department/location/employment_status/joining_date exist but are mostly empty), employee_skills (skill, category, qualifier), employee_projects (project, client, technologies, role, project_type main|support), employee_certifications (certification, vendor), employee_managers (employee_id, reporting_id).
 Skill categories are exactly: Language, Database, AI, Tool, Platform, Security, Design, BI, Cloud, OS, Other.
 Teams are exactly: Cyber, Data, Gen AI, HR, Presales, Resourcing, Sales Team.
+Projects: 'Phibro Genie' is part of 'Phibro' (same Phibro client, a sub-project) — when the user asks about the Phibro project, include the Phibro Genie people too unless they narrow to one of them, and say you did. Change requests (add/remove/move on a project) must still use the exact project name the user gave.
 
 COVERAGE
 - Skills are recorded for {with_skills} of {employees} people. When nobody matches a skill, mention that profiles only cover those with recorded skills.
