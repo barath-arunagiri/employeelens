@@ -224,8 +224,12 @@ def _fix_table_names(sql: str) -> str:
     and qualified structurally by src/database/sql_guard.py instead.)
     """
     for short, full in TABLES.items():
-        # Match word boundary + exact allowlisted name + word boundary
-        sql = re.sub(rf'\b{re.escape(short)}\b', full, sql)
+        # Match word boundary + exact allowlisted name + word boundary. The
+        # lookbehind skips a name that is already the tail of a qualified
+        # identifier (e.g. employee_skills inside
+        # workspace.employeelens.employee_skills produced by guard_select),
+        # so qualification is idempotent and never double-prefixes.
+        sql = re.sub(rf'(?<![\w.]){re.escape(short)}\b', full, sql)
     return sql
 
 
