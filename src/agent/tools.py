@@ -571,7 +571,10 @@ MANAGEMENT_TOOLS = [
     {
         "name": "propose_add_skill",
         "description": (
-            "Propose adding one skill. "
+            "Propose adding ONE single skill — use this only when the user "
+            "names exactly one skill. For a LIST of two or more skills for "
+            "the same person, call propose_add_skills (plural, batch) once "
+            "instead of this tool repeatedly. "
             "Never writes data; Streamlit confirmation is required."
         ),
         "input_schema": {
@@ -597,6 +600,43 @@ MANAGEMENT_TOOLS = [
                 "employee_id",
                 "skill",
             ],
+        },
+    },
+
+    {
+        "name": "propose_add_skills",
+        "description": (
+            "Batch-add MANY skills to ONE employee in a single call. Use this "
+            "WHENEVER the user lists two or more skills for the same person — "
+            "NEVER call propose_add_skill repeatedly for a list. Each item "
+            "needs skill and category (one of: Language, Database, AI, Tool, "
+            "Platform, Security, Design, BI, Cloud, OS, Other); qualifier is "
+            "optional. Skills the person already has are skipped and "
+            "reported. Resolve the person with search_employees first (or use "
+            "the employee_id the user gave), then call this ONCE with the "
+            "complete list. Never writes data; Streamlit confirmation is "
+            "required."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "employee_id": {"type": "string"},
+                "skills": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "skill": {"type": "string"},
+                            "category": {"type": "string"},
+                            "qualifier": {"type": "string"},
+                        },
+                        "required": ["skill"],
+                    },
+                    "description": "The complete list of skills to add",
+                },
+            },
+            "required": ["employee_id", "skills"],
         },
     },
 
@@ -947,6 +987,11 @@ MANAGEMENT_DISPATCH = {
         a["skill"],
         a.get("category", "Other"),
         a.get("qualifier", ""),
+    ),
+
+    "propose_add_skills": lambda a: repo.propose_add_skills(
+        a["employee_id"],
+        a.get("skills") or [],
     ),
 
     "propose_remove_skill": lambda a: repo.propose_remove_skill(

@@ -63,8 +63,8 @@ DATA_MANAGEMENT_PIN = os.environ.get("DATA_MANAGEMENT_PIN", "")
 # calls per request, and no more than MAX_REQUEST_TOOL_CALLS tool executions
 # per request (each tool execution costs 1+ warehouse statements — this is
 # the hard per-request warehouse budget).
-MAX_TOOL_ROUNDS = 10
-MAX_REQUEST_TOOL_CALLS = 15
+MAX_TOOL_ROUNDS = 15
+MAX_REQUEST_TOOL_CALLS = 40
 
 # Conversation memory: a rolling session summary plus the most recent N
 # messages are sent to the model so "that person" and "the first two"

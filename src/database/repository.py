@@ -209,6 +209,63 @@ def propose_add_skill(employee_id: str, skill: str, category: str = "Other",
     }
 
 
+def propose_add_skills(employee_id: str, skills: list[dict]) -> dict:
+    """
+    Batch version of propose_add_skill for MANY skills on ONE employee in a
+    single call (the agent uses this instead of one propose_add_skill per
+    skill, so a 28-skill request is one tool call, not 28). One existence
+    check, one existing-skills query. Skills the employee already has, or
+    duplicates within the list, are skipped and reported — a duplicate row
+    can never be proposed. Returns ONE batch proposal (operation
+    ADD_SKILLS) that executes in a single confirmed batch, same execution
+    path as CLONE_SKILLS.
+    """
+    if not _employee_exists(employee_id):
+        raise ValueError(f"employee '{employee_id}' was not found")
+    if not isinstance(skills, list) or not skills:
+        raise ValueError(
+            "skills must be a non-empty list of {skill, category} items"
+        )
+    existing = {
+        str(r["skill"]).strip().lower()
+        for _, r in q(
+            "SELECT lower(skill) AS skill FROM employee_skills "
+            "WHERE employee_id = ?",
+            [employee_id],
+        ).iterrows()
+    }
+    seen: set[str] = set()
+    to_add: list[dict] = []
+    skipped: list[str] = []
+    for entry in skills:
+        if not isinstance(entry, dict):
+            entry = {"skill": str(entry)}
+        name = _validate_employee_value("skill", str(entry.get("skill") or ""))
+        if name.lower() in existing or name.lower() in seen:
+            skipped.append(name)
+            continue
+        seen.add(name.lower())
+        to_add.append({
+            "skill": name,
+            "category": _validate_skill_category(entry.get("category")),
+            "qualifier": entry.get("qualifier") or None,
+        })
+    if not to_add:
+        raise ValueError(
+            f"every listed skill already exists for {employee_id} — "
+            "nothing to add"
+        )
+    label = f"{len(to_add)} skill(s) for {employee_id}"
+    if skipped:
+        label += f" ({len(skipped)} already present, skipped)"
+    return {
+        "operation": "ADD_SKILLS", "table": "employee_skills",
+        "employee_id": employee_id, "field": "skills", "old_value": None,
+        "new_value": label, "skills": to_add, "skipped": skipped,
+        "requires_confirmation": True,
+    }
+
+
 def propose_remove_skill(employee_id: str, skill: str) -> dict:
     if not _employee_exists(employee_id):
         raise ValueError(f"employee '{employee_id}' was not found")
@@ -703,9 +760,11 @@ def execute_proposal(proposal: dict, confirmed_by: str = "unknown") -> dict:
                 [employee_id, proposal["new_value"]],
             )
         
-        elif table == "employee_skills" and operation == "CLONE_SKILLS":
-            # Copy the proposed skill list in one confirmed batch, keeping
-            # each skill's real category. Rows that appeared in the meantime
+        elif table == "employee_skills" and operation in ("CLONE_SKILLS",
+                                                          "ADD_SKILLS"):
+            # Insert the proposed skill list in one confirmed batch (clone
+            # from another employee, or a multi-skill add), keeping each
+            # skill's category. Rows that appeared in the meantime
             # (duplicate) are skipped, not failed.
             added = 0
             for entry in proposal.get("skills", []):

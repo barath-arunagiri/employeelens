@@ -694,6 +694,17 @@ class PeopleLensAgent:
         calls return an error telling the model to answer with what it
         has — no more warehouse statements.
         """
+        # Same-request duplicate guard: the proposal-time duplicate check
+        # queries the DATABASE, which cannot see proposals prepared earlier
+        # in THIS request but not yet confirmed — so e.g. seven identical
+        # skill proposals could all pass the check and all execute once
+        # confirmed. Deduplicate identical proposals here so duplicate
+        # cards can never reach the user.
+        seen_proposals = {
+            (p.get("table"), p.get("operation"), p.get("field"),
+             str(p.get("new_value", "")).strip().lower())
+            for p in proposals
+        }
         for call in m.tool_calls:
             try:
                 args = json.loads(call.function.arguments or "{}")
@@ -740,7 +751,15 @@ class PeopleLensAgent:
             # A failed item (e.g. 'already exists') must not abort the
             # batch; it is skipped and the model mentions it.
             if "error" not in output and name in MANAGEMENT_DISPATCH:
-                proposals.extend(output.get("rows", []))
+                for p in output.get("rows", []):
+                    key = (
+                        p.get("table"), p.get("operation"), p.get("field"),
+                        str(p.get("new_value", "")).strip().lower(),
+                    )
+                    if key in seen_proposals:
+                        continue
+                    seen_proposals.add(key)
+                    proposals.append(p)
 
         return calls_used
 

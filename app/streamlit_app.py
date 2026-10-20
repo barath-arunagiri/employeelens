@@ -227,7 +227,6 @@ SUGGESTIONS = [
     "Who knows Python and Azure and works on Phibro?",
     "Tell me about Siva",
     "Who could take over a Snowflake migration?",
-    "Which skills does only one person have?",
 ]
 
 HAS_MODEL = True
