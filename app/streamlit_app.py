@@ -227,7 +227,6 @@ SUGGESTIONS = [
     "Who knows Python and Azure and works on Phibro?",
     "Tell me about Siva",
     "Who could take over a Snowflake migration?",
-    "Whose profile is missing skills or certifications?",
     "Whose profile has no skills?",
 ]
 
