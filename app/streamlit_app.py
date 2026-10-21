@@ -227,7 +227,7 @@ SUGGESTIONS = [
     "Who knows Python and Azure and works on Phibro?",
     "Tell me about Siva",
     "Who could take over a Snowflake migration?",
-    "Who knows Python but not SQL?",
+    "Whose profile is missing skills or certifications?",
 ]
 
 HAS_MODEL = True
