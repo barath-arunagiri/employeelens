@@ -977,7 +977,7 @@ with explore_tab:
                 x=alt.X("people:Q", title="People"),
                 tooltip=["project", "client", "people"],
             )
-            .properties(height=310),
+            .properties(height=max(280, 24 * len(hp) + 30)),
             use_container_width=True,
         )
         with st.expander(f"Project detail ({len(hp)})"):
