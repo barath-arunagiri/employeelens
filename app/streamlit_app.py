@@ -766,15 +766,33 @@ with profile_tab:
             # (their tracker data is not relevant in the profile view).
             resourcing = "resourcing" in str(profile.get("team") or "").lower()
             with left:
-                st.markdown("**Projects**")
-                if profile["projects"]:
-                    projects = pd.DataFrame(profile["projects"]).rename(
-                        columns={"technologies": "Work & Tools"}
-                    )
-                    st.dataframe(projects, hide_index=True,
-                                 use_container_width=True)
+                if resourcing:
+                    # Resourcing members: show vendor ownership (from the
+                    # employee_vendor_ownership table) instead of projects.
+                    st.markdown("**Vendors**")
+                    try:
+                        vrow = repo.uc.fetchone(
+                            "SELECT vendor_ownership FROM workspace.employeelens."
+                            "employee_vendor_ownership WHERE employee_id = ?",
+                            [str(profile["employee_id"])])
+                    except Exception:  # noqa: BLE001
+                        vrow = None
+                    if vrow and str(vrow[0] or "").strip():
+                        for v in str(vrow[0]).split(","):
+                            if v.strip():
+                                st.markdown(f"- {v.strip()}")
+                    else:
+                        st.caption("No vendor recorded.")
                 else:
-                    st.caption("No project recorded.")
+                    st.markdown("**Projects**")
+                    if profile["projects"]:
+                        projects = pd.DataFrame(profile["projects"]).rename(
+                            columns={"technologies": "Work & Tools"}
+                        )
+                        st.dataframe(projects, hide_index=True,
+                                     use_container_width=True)
+                    else:
+                        st.caption("No project recorded.")
 
                 if not resourcing:
                     st.markdown("**Certifications**")
