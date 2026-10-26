@@ -35,6 +35,7 @@ TABLES = {
     "employees": f"{UC}.employee_master",
     "employee_skills": f"{UC}.employee_skills",
     "employee_projects": f"{UC}.employee_projects",
+    "employee_vendor_ownership": f"{UC}.employee_vendor_ownership",
     "employee_certifications": f"{UC}.employee_certifications",
     "employee_managers": f"{UC}.employee_managers",
     "change_audit_log": f"{UC}.change_audit_log",
