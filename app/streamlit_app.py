@@ -762,6 +762,9 @@ with profile_tab:
             details[3].markdown(f"**Team**  \n{profile.get('team') or '—'}")
 
             left, right = st.columns(2)
+            # Resourcing-team profiles never show skills/certifications
+            # (their tracker data is not relevant in the profile view).
+            resourcing = "resourcing" in str(profile.get("team") or "").lower()
             with left:
                 st.markdown("**Projects**")
                 if profile["projects"]:
@@ -773,12 +776,13 @@ with profile_tab:
                 else:
                     st.caption("No project recorded.")
 
-                st.markdown("**Certifications**")
-                if profile["certifications"]:
-                    for cert in profile["certifications"]:
-                        st.markdown(f"- {cert['certification']}")
-                else:
-                    st.caption("None recorded.")
+                if not resourcing:
+                    st.markdown("**Certifications**")
+                    if profile["certifications"]:
+                        for cert in profile["certifications"]:
+                            st.markdown(f"- {cert['certification']}")
+                    else:
+                        st.caption("None recorded.")
 
             with right:
                 st.markdown("**Reports to**")
@@ -788,13 +792,14 @@ with profile_tab:
                     st.markdown(f"**Direct reports** ({len(profile['direct_reports'])})")
                     st.caption(", ".join(profile["direct_reports"]))
 
-                st.markdown("**Skills**")
-                skills = pd.DataFrame(profile["skills"])
-                if skills.empty:
-                    st.caption("No skills recorded — this profile still needs to be filled in.")
-                else:
-                    for category, group in skills.groupby("category"):
-                        st.markdown(f"*{category}* — " + ", ".join(group["skill"]))
+                if not resourcing:
+                    st.markdown("**Skills**")
+                    skills = pd.DataFrame(profile["skills"])
+                    if skills.empty:
+                        st.caption("No skills recorded — this profile still needs to be filled in.")
+                    else:
+                        for category, group in skills.groupby("category"):
+                            st.markdown(f"*{category}* — " + ", ".join(group["skill"]))
 
     else:  # Team structure view — team-lead-wise, in the organisation's team order
         import html as _ts_html
