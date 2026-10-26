@@ -1039,7 +1039,7 @@ def search_employees(name: str, limit: int = 10) -> pd.DataFrame:
 
 
 def get_employee(employee_id: str) -> pd.DataFrame:
-    return q("SELECT employee_id, name, email, position, designation, team FROM employees WHERE employee_id = ?", [employee_id])
+    return q("SELECT employee_id, name, email, position, designation, team, location FROM employees WHERE employee_id = ?", [employee_id])
 
 
 def get_team_structure() -> pd.DataFrame:
@@ -1131,7 +1131,7 @@ def get_employee_360(employee_id: str) -> dict:
     """
     row = q(
         """
-        SELECT e.employee_id, e.name, e.email, e.position, e.designation, e.team,
+        SELECT e.employee_id, e.name, e.email, e.position, e.designation, e.team, e.location,
                (SELECT to_json(collect_list(struct(s.skill AS skill, s.category AS category, s.qualifier AS qualifier)))
                   FROM employee_skills s WHERE s.employee_id = e.employee_id)   AS skills_json,
                (SELECT to_json(collect_list(struct(p.project AS project, p.client AS client,
@@ -1177,6 +1177,7 @@ def get_employee_360(employee_id: str) -> dict:
         "position": r["position"],
         "designation": r["designation"],
         "team": r["team"],
+        "location": r["location"],
         "skills": sorted(_records("skills_json"),
                          key=lambda s: (s.get("category") or "", s.get("skill") or "")),
         "projects": sorted(_records("projects_json"),

@@ -755,11 +755,12 @@ with profile_tab:
                 role = position
             else:
                 role = designation
-            details = st.columns([3, 1, 2, 2])
+            details = st.columns([3, 1, 2, 2, 2])
             details[0].markdown(f"**Email**  \n{profile['email'] or '—'}")
             details[1].markdown(f"**ID**  \n{profile['employee_id']}")
             details[2].markdown(f"**Role**  \n{role or '—'}")
             details[3].markdown(f"**Team**  \n{profile.get('team') or '—'}")
+            details[4].markdown(f"**Location**  \n{profile.get('location') or '—'}")
 
             left, right = st.columns(2)
             # Resourcing-team profiles never show skills/certifications
