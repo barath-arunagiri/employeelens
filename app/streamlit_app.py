@@ -977,7 +977,7 @@ with explore_tab:
     left, right = st.columns(2)
     with left:
         how_many = st.slider("Top skills", 5, 30, 10, key="top_skills_n")
-        _section("🛠️ Most common skills")
+        _section("Most common skills")
         st.altair_chart(
             alt.Chart(c_top_skills(how_many))
             .mark_bar(color="#f46902", cornerRadiusEnd=3)
@@ -991,7 +991,7 @@ with explore_tab:
         )
 
     with right:
-        _section("📁 People per project")
+        _section("People per project")
         hp = c_headcount_by_project()
         st.altair_chart(
             alt.Chart(hp)
@@ -1010,7 +1010,7 @@ with explore_tab:
     # --- Charts row 2: skills by category (donut) + certifications ---
     cat_col, cert_col = st.columns(2)
     with cat_col:
-        _section("🗂️ Skills by category")
+        _section("Skills by category")
         sc = c_skill_categories()
         st.altair_chart(
             alt.Chart(sc)
@@ -1025,7 +1025,7 @@ with explore_tab:
         )
 
     with cert_col:
-        _section("📜 Certifications held")
+        _section("Certifications held")
         cc = c_certification_counts()
         st.altair_chart(
             alt.Chart(cc)
@@ -1045,7 +1045,7 @@ with explore_tab:
 
     # --- Coverage gap ---
     missing = c_employees_without_skills()
-    _section(f"⚠️ Coverage gap — {len(missing)} profile(s) with no skills recorded")
+    _section(f"Coverage gap — {len(missing)} profile(s) with no skills recorded")
     st.caption("This is the list to chase. Until these are filled in, any "
                "'nobody has skill X' answer is only true of the people who do have profiles.")
     st.progress(coverage, text=f"{stats['with_skills']} of {stats['employees']} profiles have skills")
