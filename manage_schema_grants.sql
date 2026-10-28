@@ -39,6 +39,7 @@ GRANT SELECT ON TABLE workspace.employeelens.employee_skills TO `ab5b0cb3-9f86-4
 GRANT SELECT ON TABLE workspace.employeelens.employee_projects TO `ab5b0cb3-9f86-40ee-9117-202fa8ecda67`;
 GRANT SELECT ON TABLE workspace.employeelens.employee_certifications TO `ab5b0cb3-9f86-40ee-9117-202fa8ecda67`;
 GRANT SELECT ON TABLE workspace.employeelens.employee_managers TO `ab5b0cb3-9f86-40ee-9117-202fa8ecda67`;
+GRANT SELECT ON TABLE workspace.employeelens.employee_vendor_ownership TO `ab5b0cb3-9f86-40ee-9117-202fa8ecda67`;
 -- audit history tool reads this table (the free-form run_sql tool cannot —
 -- it is excluded by the SQL guard)
 GRANT SELECT ON TABLE workspace.employeelens.change_audit_log TO `ab5b0cb3-9f86-40ee-9117-202fa8ecda67`;

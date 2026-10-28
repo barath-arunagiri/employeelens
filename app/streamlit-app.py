@@ -2,7 +2,7 @@
 Employeelens — Streamlit UI.
 
 Run from the project root:
-    streamlit run app/streamlit_app.py
+    streamlit run app/streamlit-app.py
 
 Four tabs: Ask (the agent), Profile (employee 360 with a Team Structure
 view for the reporting hierarchy), Explore (aggregates, no model), and
@@ -19,6 +19,15 @@ import streamlit as st
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+
+from streamlit.errors import StreamlitSecretNotFoundError  # noqa: E402
+
+from src.streamlit_config import apply_databricks_secrets  # noqa: E402
+
+try:
+    apply_databricks_secrets(st.secrets)
+except StreamlitSecretNotFoundError:
+    pass
 
 from src.config import (APP_NAME, DATA_MANAGEMENT_ADMINS, DATA_MANAGEMENT_ENABLED,
                         DATABRICKS_MODEL, REPORTS_DIR)  # noqa: E402

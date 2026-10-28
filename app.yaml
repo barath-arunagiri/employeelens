@@ -1,7 +1,7 @@
 command:
 - streamlit
 - run
-- app/streamlit_app.py
+- app/streamlit-app.py
 
 # The SQL warehouse (CAN_USE, id eafe19ac379b5437) is attached to this app
 # as the app-level resource "sql-warehouse" in the Apps UI. It is NOT
