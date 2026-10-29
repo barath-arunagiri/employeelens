@@ -485,28 +485,29 @@ def propose_create_employee(employee_id: str, name: str, email: str = "",
     ):
         raise ValueError(f"employee '{employee_id}' already exists")
 
-    designation = (designation or "").strip() or None
-    position = (position or "").strip() or None
-    team = (team or "").strip() or None
-    if team:
+    normalized_designation: str | None = (designation or "").strip() or None
+    normalized_position: str | None = (position or "").strip() or None
+    normalized_team: str | None = (team or "").strip() or None
+    if normalized_team is not None:
         real_teams = q(
             "SELECT DISTINCT team FROM employees "
             "WHERE team IS NOT NULL ORDER BY team"
         )
         matches = [t for t in real_teams["team"]
-                   if str(t).strip().lower() == team.lower()]
+                   if str(t).strip().lower() == normalized_team.lower()]
         if not matches:
             raise ValueError(
-                f"'{team}' is not an existing team. Teams in this data: "
+                f"'{normalized_team}' is not an existing team. Teams in this data: "
                 + ", ".join(str(t) for t in real_teams["team"])
             )
-        team = matches[0]  # exact casing from the data
+        normalized_team = str(matches[0])  # exact casing from the data
 
     return {
         "operation": "INSERT", "table": "employees", "employee_id": employee_id,
         "field": "employee", "old_value": None, "new_value": name,
-        "email": email or None, "designation": designation, "position": position,
-        "team": team, "requires_confirmation": True,
+        "email": email or None, "designation": normalized_designation,
+        "position": normalized_position, "team": normalized_team,
+        "requires_confirmation": True,
     }
 
 
