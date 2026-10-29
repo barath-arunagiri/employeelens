@@ -64,11 +64,11 @@ GRANT SELECT ON TABLE workspace.employeelens.change_audit_log
   TO `<cloud-service-principal-application-id>`;
 ```
 
-The app's Data Management features write employee and audit tables. Leave them
-disabled for Community Cloud by default. If you later implement a trusted
-viewer sign-in and authorization flow, review the write paths first and grant
-`MODIFY` only on the tables those paths write; do not grant schema-wide
-`MODIFY` to enable the feature.
+The app's Data Management features write employee and audit tables. The app
+requires both a verified viewer identity and an email in
+`DATA_MANAGEMENT_ADMINS` before it allows a write. Grant `MODIFY` only on the
+tables those paths write; do not grant schema-wide `MODIFY` to enable the
+feature.
 
 ## 4. Set Streamlit secrets
 
@@ -84,7 +84,40 @@ workspace. To change the primary model, set `model` to an available endpoint
 name in the secrets. The app uses Databricks OAuth M2M via the service
 principal; it does not use a personal access token.
 
-## 5. Verify the deployment
+## 5. Enable admin-only Data Management
+
+Databricks Apps supplies a verified `x-forwarded-email` identity automatically.
+Streamlit Community Cloud does not, so configure an OIDC sign-in provider to
+enable Data Management there. For Google sign-in:
+
+1. Create a Google OAuth client of type **Web application**.
+2. Add `https://<your-app-subdomain>.streamlit.app/oauth2callback` as an
+   authorized redirect URI for that client.
+3. Add the following `[auth]` section to Community Cloud **Settings > Secrets**,
+   using the actual client credentials and a strong random cookie secret:
+
+   ```toml
+   [auth]
+   redirect_uri = "https://<your-app-subdomain>.streamlit.app/oauth2callback"
+   cookie_secret = "<long-random-secret>"
+   client_id = "<google-oauth-client-id>"
+   client_secret = "<google-oauth-client-secret>"
+   server_metadata_url = "https://accounts.google.com/.well-known/openid-configuration"
+   ```
+
+4. In the existing `[databricks]` section, set `data_management_enabled = true`
+   and `data_management_admins = "admin@example.com"` to the exact verified
+   Google account email(s) allowed to make changes.
+5. Confirm the Community Cloud service principal has the table-level `MODIFY`
+   grants required by the app's write operations. Do not rely on the admin
+   email allowlist alone; authorization also requires a verified sign-in.
+
+The app accepts verified OIDC identities on Community Cloud. It trusts
+forwarded identity headers only in Databricks Apps, where
+`TRUST_DATABRICKS_FORWARDED_IDENTITY=true` is set in `app.yaml`. Users who are
+not in the admin allowlist can still use the app but cannot manage data.
+
+## 6. Verify the deployment
 
 After redeploying, check that the app loads its Unity Catalog statistics and
 that a simple employee search succeeds. Authentication or permission failures
@@ -96,7 +129,6 @@ usually indicate one of the following:
 - A table grant or `USE CATALOG` / `USE SCHEMA` grant is missing.
 - The model endpoint is unavailable or the principal lacks `CAN_QUERY`.
 
-Community Cloud does not inject Databricks Apps' `x-forwarded-email` header.
-Keep `data_management_enabled = false` unless a trusted Community Cloud user
-identity and server-side authorization check have been separately configured
-and tested. An admin email list by itself is not authentication.
+If Data Management remains locked on Community Cloud, verify that the `[auth]`
+section is configured, the user signed in with Google, the Google account's
+email is verified, and its email is present in `data_management_admins`.

@@ -1206,10 +1206,10 @@ def list_all_employees() -> pd.DataFrame:
 
 
 def employee_directory() -> pd.DataFrame:
-    """Flat view of employee records for the Team Structure and Data Management pages."""
+    """Flat directory: one row per employee with position, designation and
+    team. Powers the Team Structure page's person cards and search."""
     return q(
-        "SELECT employee_id, name, email, position, designation, team, department, "
-        "location, employment_status, joining_date "
+        "SELECT employee_id, name, position, designation, team "
         "FROM employees ORDER BY name"
     )
 

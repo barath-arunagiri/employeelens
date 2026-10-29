@@ -30,25 +30,34 @@ except StreamlitSecretNotFoundError:
     pass
 
 from src.config import (APP_NAME, DATA_MANAGEMENT_ADMINS, DATA_MANAGEMENT_ENABLED,
-                        DATABRICKS_MODEL, REPORTS_DIR)  # noqa: E402
+                        DATABRICKS_MODEL, REPORTS_DIR,
+                        TRUST_DATABRICKS_FORWARDED_IDENTITY)  # noqa: E402
 from src.database import repository as repo                                       # noqa: E402
+from src.user_identity import get_verified_user_email  # noqa: E402
 
 
 def get_user_email() -> str:
     """
-    Real user identity forwarded by Databricks Apps.
-
-    Databricks Apps injects the authenticated user's email in the
-    x-forwarded-email header. Returns '' when the identity is not
-    available so callers can fail closed.
+    Resolve a verified identity from Databricks Apps or Streamlit OIDC.
     """
+    headers = {}
+    if TRUST_DATABRICKS_FORWARDED_IDENTITY:
+        try:
+            headers = st.context.headers or {}
+        except Exception:  # noqa: BLE001
+            headers = {}
     try:
-        headers = st.context.headers or {}
-        email = (headers.get("x-forwarded-email")
-                 or headers.get("x-forwarded-user") or "").strip()
-        return email
+        return get_verified_user_email(
+            headers,
+            st.user,
+            trust_databricks_headers=TRUST_DATABRICKS_FORWARDED_IDENTITY,
+        )
     except Exception:  # noqa: BLE001
-        return ""
+        return get_verified_user_email(
+            headers,
+            {},
+            trust_databricks_headers=TRUST_DATABRICKS_FORWARDED_IDENTITY,
+        )
 
 st.set_page_config(page_title=APP_NAME, page_icon="🔎", layout="wide")
 
@@ -550,59 +559,9 @@ with ask_tab:
 # ---- Data Management
 with management_tab:
     st.markdown("#### Data Management")
-    st.caption("Employee records are read from the same Unity Catalog source used throughout the app.")
+    st.caption("Use one natural-language request for a change or read-only audit history. Changes require confirmation.")
 
-    directory = c_employee_directory()
-    search_col, team_col, refresh_col = st.columns([3, 2, 1])
-    with search_col:
-        employee_search = st.text_input(
-            "Search employees",
-            placeholder="Name, ID, email, role, or team",
-            key="management_employee_search",
-        ).strip()
-    with team_col:
-        teams = ["All teams", *sorted(
-            directory["team"].dropna().astype(str).unique().tolist()
-        )]
-        selected_team = st.selectbox(
-            "Team",
-            options=teams,
-            key="management_employee_team",
-        )
-    with refresh_col:
-        st.write("")
-        if st.button("Refresh", key="refresh_management_directory"):
-            c_employee_directory.clear()
-            st.rerun()
-
-    filtered_directory = directory
-    if employee_search:
-        search_mask = pd.Series(False, index=directory.index)
-        for column in ("employee_id", "name", "email", "position",
-                       "designation", "team"):
-            if column in directory:
-                search_mask |= directory[column].astype("string").str.contains(
-                    employee_search, case=False, na=False, regex=False
-                )
-        filtered_directory = filtered_directory[search_mask]
-    if selected_team != "All teams":
-        filtered_directory = filtered_directory[
-            filtered_directory["team"] == selected_team
-        ]
-
-    st.caption(
-        f"Showing {len(filtered_directory)} of {len(directory)} employee records."
-    )
-    st.dataframe(
-        filtered_directory,
-        hide_index=True,
-        use_container_width=True,
-    )
-    st.divider()
-    st.caption("Changes require admin access and confirmation. Audit history is available to admins.")
-
-    # Admin-only, fail closed: writes require a configured admin list AND a
-    # verified user identity from the Databricks Apps forwarded header.
+    # Writes require both an enabled feature and a verified allowlisted identity.
     user_email = get_user_email()
     admin_ok = (
         DATA_MANAGEMENT_ENABLED
@@ -611,15 +570,22 @@ with management_tab:
         and user_email.lower() in DATA_MANAGEMENT_ADMINS
     )
 
-    if not admin_ok:
-        if not DATA_MANAGEMENT_ADMINS:
-            st.info("Data Management is locked: no admin identities are configured "
-                    "(DATA_MANAGEMENT_ADMINS is empty). Writes are disabled.")
-        elif not user_email:
-            st.info("Data Management is locked: no verified user identity was "
-                    "forwarded by Databricks Apps. Writes are disabled.")
+    if not DATA_MANAGEMENT_ENABLED:
+        st.info("Data Management is disabled by configuration. Writes are disabled.")
+    elif not DATA_MANAGEMENT_ADMINS:
+        st.info("Data Management is locked: no admin identities are configured "
+                "(DATA_MANAGEMENT_ADMINS is empty). Writes are disabled.")
+    elif not user_email:
+        st.info("Data Management is locked: sign in with a verified account to enable "
+                "admin access. Writes are disabled until your identity is verified.")
+        if st.secrets.get("auth"):
+            if st.button("Sign in to manage data", key="management_login"):
+                st.login()
         else:
-            st.info(f"Data Management is admin-only. You are signed in as {user_email}.")
+            st.caption("Configure Streamlit OIDC sign-in in Community Cloud Secrets, "
+                       "or open this app through Databricks Apps.")
+    elif not admin_ok:
+        st.info(f"Data Management is admin-only. You are signed in as {user_email}.")
     else:
         request = st.text_area(
             "Describe the change you want to make",
