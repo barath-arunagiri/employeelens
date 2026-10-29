@@ -550,7 +550,56 @@ with ask_tab:
 # ---- Data Management
 with management_tab:
     st.markdown("#### Data Management")
-    st.caption("Use one natural-language request for a change or read-only audit history. Changes require confirmation.")
+    st.caption("Employee records are read from the same Unity Catalog source used throughout the app.")
+
+    directory = c_employee_directory()
+    search_col, team_col, refresh_col = st.columns([3, 2, 1])
+    with search_col:
+        employee_search = st.text_input(
+            "Search employees",
+            placeholder="Name, ID, email, role, or team",
+            key="management_employee_search",
+        ).strip()
+    with team_col:
+        teams = ["All teams", *sorted(
+            directory["team"].dropna().astype(str).unique().tolist()
+        )]
+        selected_team = st.selectbox(
+            "Team",
+            options=teams,
+            key="management_employee_team",
+        )
+    with refresh_col:
+        st.write("")
+        if st.button("Refresh", key="refresh_management_directory"):
+            c_employee_directory.clear()
+            st.rerun()
+
+    filtered_directory = directory
+    if employee_search:
+        search_mask = pd.Series(False, index=directory.index)
+        for column in ("employee_id", "name", "email", "position",
+                       "designation", "team"):
+            if column in directory:
+                search_mask |= directory[column].astype("string").str.contains(
+                    employee_search, case=False, na=False, regex=False
+                )
+        filtered_directory = filtered_directory[search_mask]
+    if selected_team != "All teams":
+        filtered_directory = filtered_directory[
+            filtered_directory["team"] == selected_team
+        ]
+
+    st.caption(
+        f"Showing {len(filtered_directory)} of {len(directory)} employee records."
+    )
+    st.dataframe(
+        filtered_directory,
+        hide_index=True,
+        use_container_width=True,
+    )
+    st.divider()
+    st.caption("Changes require admin access and confirmation. Audit history is available to admins.")
 
     # Admin-only, fail closed: writes require a configured admin list AND a
     # verified user identity from the Databricks Apps forwarded header.
