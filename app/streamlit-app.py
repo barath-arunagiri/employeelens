@@ -601,6 +601,12 @@ with management_tab:
         if st.session_state.get("management_message"):
             st.info(st.session_state.management_message)
 
+        for notice in st.session_state.pop("management_write_notices", []):
+            if notice["level"] == "success":
+                st.success(notice["message"])
+            else:
+                st.warning(notice["message"])
+
         for step in st.session_state.get("management_trace", []):
             if step.get("tool") == "get_audit_history":
                 rows = step.get("output", {}).get("rows", [])
@@ -699,10 +705,31 @@ with management_tab:
                     ok = [r for r in results if r.get("status") == "SUCCESS"]
                     failed = [r for r in results if r.get("status") != "SUCCESS"]
                     if ok:
-                        st.success(
-                            f"SUCCESS: {len(ok)} change(s) committed and verified "
-                            "by the app."
-                        )
+                        notices = [{
+                            "level": "success",
+                            "message": (
+                                f"SUCCESS: {len(ok)} change(s) committed and "
+                                "verified by the app."
+                            ),
+                        }]
+                        for result in failed:
+                            proposal = result.get("proposal", {})
+                            notices.append({
+                                "level": "warning",
+                                "message": (
+                                    f"Skipped {proposal.get('operation')} on "
+                                    f"{proposal.get('table')} for "
+                                    f"{proposal.get('employee_id')}: "
+                                    f"{result.get('error', 'unknown error')}"
+                                ),
+                            })
+                        st.session_state.management_write_notices = notices
+                    st.session_state.management_proposal = None
+                    st.session_state.management_proposals = []
+                    st.session_state.management_message = None
+                    st.session_state.management_trace = []
+                    if ok:
+                        st.rerun()
                     for result in failed:
                         proposal = result.get("proposal", {})
                         st.warning(
@@ -711,10 +738,6 @@ with management_tab:
                             f"{proposal.get('employee_id')}: "
                             f"{result.get('error', 'unknown error')}"
                         )
-                    st.session_state.management_proposal = None
-                    st.session_state.management_proposals = []
-                    st.session_state.management_message = None
-                    st.session_state.management_trace = []
                 except Exception as exc:  # noqa: BLE001
                     st.error(f"The change was not applied: {exc}")
             if cancel_col.button("Cancel", key="cancel_management"):
