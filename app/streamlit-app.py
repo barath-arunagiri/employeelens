@@ -924,9 +924,19 @@ with profile_tab:
                 pair = st.columns(2)
                 for col, (lid, lead, rows) in zip(pair, lead_groups[i:i + 2]):
                     with col:
-                        lead_name = _display_text(lead.get("name")) or lid
+                        lead_profile = dir_by_id.get(lid, {})
+                        lead_name = (
+                            _display_text(lead_profile.get("name"))
+                            or _display_text(lead.get("lead_name"))
+                            or lid
+                        )
+                        lead_role = (
+                            _role(lead_profile)
+                            or _display_text(lead.get("lead_position"))
+                            or "Team Lead"
+                        )
                         lead_line = (f"**{lead_name}** · "
-                                     f"{_role(lead) or 'Team Lead'}"
+                                     f"{lead_role}"
                                      f" — {len(rows)} member(s)")
                         st.markdown(lead_line)
                         st.markdown(
