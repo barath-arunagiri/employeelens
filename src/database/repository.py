@@ -65,7 +65,7 @@ def get_audit_history(employee_id: str | None = None,
                       operation: str | None = None,
                       status: str | None = None,
                       limit: int = 10) -> pd.DataFrame:
-    """Read-only audit search used by natural-language history requests."""
+    """Read-only audit search for the Data Management page and agent."""
     clauses, params = [], []
     if employee_id:
         clauses.append("employee_id = ?")

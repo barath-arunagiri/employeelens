@@ -13,7 +13,3 @@ env:
   value: 'false'
 - name: DATABRICKS_SQL_WAREHOUSE_ID
   valueFrom: sql-warehouse
-- name: DATA_MANAGEMENT_ADMINS
-  value: 'baratha723@gmail.com'
-- name: TRUST_DATABRICKS_FORWARDED_IDENTITY
-  value: 'true'

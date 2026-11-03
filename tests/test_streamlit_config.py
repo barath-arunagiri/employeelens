@@ -17,8 +17,7 @@ class StreamlitConfigTests(unittest.TestCase):
                     "client_secret": "client-secret",
                     "sql_warehouse_id": "warehouse-id",
                     "model": "databricks-gpt-oss-120b",
-                    "data_management_enabled": False,
-                    "data_management_admins": "",
+                    "data_management_enabled": True,
                 }
             })
 
@@ -31,8 +30,7 @@ class StreamlitConfigTests(unittest.TestCase):
                              "warehouse-id")
             self.assertEqual(os.environ["DATABRICKS_MODEL"],
                              "databricks-gpt-oss-120b")
-            self.assertEqual(os.environ["DATA_MANAGEMENT_ENABLED"], "False")
-            self.assertEqual(os.environ["DATA_MANAGEMENT_ADMINS"], "")
+            self.assertEqual(os.environ["DATA_MANAGEMENT_ENABLED"], "True")
 
     def test_environment_values_take_precedence(self):
         with patch.dict(os.environ, {"DATABRICKS_HOST": "https://env.example.com"},

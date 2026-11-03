@@ -12,7 +12,6 @@ _DATABRICKS_SECRET_ENV = {
     "sql_warehouse_id": "DATABRICKS_SQL_WAREHOUSE_ID",
     "model": "DATABRICKS_MODEL",
     "data_management_enabled": "DATA_MANAGEMENT_ENABLED",
-    "data_management_admins": "DATA_MANAGEMENT_ADMINS",
 }
 
 

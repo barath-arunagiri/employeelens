@@ -50,17 +50,6 @@ DATABRICKS_MODELS = [
 # Legacy single-model config (for backward compatibility)
 DATABRICKS_MODEL = os.environ.get("DATABRICKS_MODEL", DATABRICKS_MODELS[0])
 DATA_MANAGEMENT_ENABLED = os.environ.get("DATA_MANAGEMENT_ENABLED", "true").lower() == "true"
-TRUST_DATABRICKS_FORWARDED_IDENTITY = (
-    os.environ.get("TRUST_DATABRICKS_FORWARDED_IDENTITY", "false").lower()
-    == "true"
-)
-# Admin identities allowed to use Data Management (comma-separated emails,
-# matched against a verified OIDC email or trusted Databricks Apps identity).
-# Empty list = writes disabled (fail closed).
-DATA_MANAGEMENT_ADMINS = [
-    a.strip().lower() for a in os.environ.get("DATA_MANAGEMENT_ADMINS", "").split(",")
-    if a.strip()
-]
 DATA_MANAGEMENT_PIN = os.environ.get("DATA_MANAGEMENT_PIN", "")
 
 # Phase 2 unified-agent limits: the model may run up to 10 rounds of tool

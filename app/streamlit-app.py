@@ -29,35 +29,8 @@ try:
 except StreamlitSecretNotFoundError:
     pass
 
-from src.config import (APP_NAME, DATA_MANAGEMENT_ADMINS, DATA_MANAGEMENT_ENABLED,
-                        DATABRICKS_MODEL, REPORTS_DIR,
-                        TRUST_DATABRICKS_FORWARDED_IDENTITY)  # noqa: E402
+from src.config import APP_NAME, DATA_MANAGEMENT_ENABLED, DATABRICKS_MODEL, REPORTS_DIR  # noqa: E402
 from src.database import repository as repo                                       # noqa: E402
-from src.user_identity import get_verified_user_email  # noqa: E402
-
-
-def get_user_email() -> str:
-    """
-    Resolve a verified identity from Databricks Apps or Streamlit OIDC.
-    """
-    headers = {}
-    if TRUST_DATABRICKS_FORWARDED_IDENTITY:
-        try:
-            headers = st.context.headers or {}
-        except Exception:  # noqa: BLE001
-            headers = {}
-    try:
-        return get_verified_user_email(
-            headers,
-            st.user,
-            trust_databricks_headers=TRUST_DATABRICKS_FORWARDED_IDENTITY,
-        )
-    except Exception:  # noqa: BLE001
-        return get_verified_user_email(
-            headers,
-            {},
-            trust_databricks_headers=TRUST_DATABRICKS_FORWARDED_IDENTITY,
-        )
 
 st.set_page_config(page_title=APP_NAME, page_icon="🔎", layout="wide")
 
@@ -560,32 +533,13 @@ with ask_tab:
 with management_tab:
     st.markdown("#### Data Management")
     st.caption("Use one natural-language request for a change or read-only audit history. Changes require confirmation.")
-
-    # Writes require both an enabled feature and a verified allowlisted identity.
-    user_email = get_user_email()
-    admin_ok = (
-        DATA_MANAGEMENT_ENABLED
-        and bool(DATA_MANAGEMENT_ADMINS)
-        and bool(user_email)
-        and user_email.lower() in DATA_MANAGEMENT_ADMINS
+    st.warning(
+        "Anyone who can access this app can propose and confirm changes to "
+        "employee data. Only deploy where every viewer is trusted."
     )
 
     if not DATA_MANAGEMENT_ENABLED:
         st.info("Data Management is disabled by configuration. Writes are disabled.")
-    elif not DATA_MANAGEMENT_ADMINS:
-        st.info("Data Management is locked: no admin identities are configured "
-                "(DATA_MANAGEMENT_ADMINS is empty). Writes are disabled.")
-    elif not user_email:
-        st.info("Data Management is locked: sign in with a verified account to enable "
-                "admin access. Writes are disabled until your identity is verified.")
-        if st.secrets.get("auth"):
-            if st.button("Sign in to manage data", key="management_login"):
-                st.login()
-        else:
-            st.caption("Configure Streamlit OIDC sign-in in Community Cloud Secrets, "
-                       "or open this app through Databricks Apps.")
-    elif not admin_ok:
-        st.info(f"Data Management is admin-only. You are signed in as {user_email}.")
     else:
         request = st.text_area(
             "Describe the change you want to make",
@@ -593,7 +547,7 @@ with management_tab:
                           "Add Python as a skill for EMP1005.\n\n"
                           "You can enter multiple requests, one per line."),
             key="management_request",
-            height=150,  # Explicit height for better multiline input
+            height=150,
         )
         if st.button("Process Request", type="primary", key="process_management"):
             st.session_state.management_proposal = None
@@ -608,17 +562,18 @@ with management_tab:
 
                         if "agent_session" not in st.session_state:
                             st.session_state.agent_session = Session()
-                        # Same unified agent and same session as the Ask
-                        # tab — the model decides this is a change request.
                         result = get_agent().chat(
                             request,
                             session=st.session_state.agent_session,
                         )
-                        st.session_state.management_proposals = result.proposals or ([result.proposal] if result.proposal else [])
+                        st.session_state.management_proposals = (
+                            result.proposals
+                            or ([result.proposal] if result.proposal else [])
+                        )
                         st.session_state.management_proposal = result.proposal
                         st.session_state.management_message = result.answer
                         st.session_state.management_trace = result.trace
-                    except Exception as exc:                    # noqa: BLE001
+                    except Exception as exc:  # noqa: BLE001
                         st.session_state.management_proposal = None
                         st.session_state.management_proposals = []
                         st.session_state.management_message = (
@@ -635,7 +590,11 @@ with management_tab:
                 rows = step.get("output", {}).get("rows", [])
                 st.markdown(f"**Audit history ({len(rows)} record(s))**")
                 if rows:
-                    st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+                    st.dataframe(
+                        pd.DataFrame(rows),
+                        hide_index=True,
+                        use_container_width=True,
+                    )
                 else:
                     st.caption("No matching audit records.")
 
@@ -648,96 +607,99 @@ with management_tab:
             _OP_COLORS = {"DELETE": "#b3261e", "INSERT": "#1e7b34",
                           "UPDATE": "#8a5a00", "MOVE": "#8a5a00"}
 
-            def _proposal_card(p):
-                """Human-readable, aligned summary of one proposal."""
-                op = p.get("operation", "")
+            def _proposal_card(proposal):
+                op = proposal.get("operation", "")
                 color = _OP_COLORS.get(op, "#033c67")
 
-                def esc(v):
-                    return _html.escape(str(v))
+                def esc(value):
+                    return _html.escape(str(value))
 
-                rows = [("Operation", f"{op} on {p.get('table', '')}"),
-                        ("Employee", esc(p.get("employee_id", "")))]
-                if p.get("field") and p.get("field") != "employee":
-                    rows.append(("Field", esc(p["field"])))
-                if p.get("old_value") is not None:
-                    rows.append(("Current value", esc(p["old_value"])))
-                if p.get("new_value") is not None:
-                    rows.append(("New value", esc(p["new_value"])))
+                rows = [("Operation", f"{op} on {proposal.get('table', '')}"),
+                        ("Employee", esc(proposal.get("employee_id", "")))]
+                if proposal.get("field") and proposal.get("field") != "employee":
+                    rows.append(("Field", esc(proposal["field"])))
+                if proposal.get("old_value") is not None:
+                    rows.append(("Current value", esc(proposal["old_value"])))
+                if proposal.get("new_value") is not None:
+                    rows.append(("New value", esc(proposal["new_value"])))
                 for extra in ("project", "email", "category", "qualifier", "client",
                               "technologies", "role", "vendor", "verified"):
-                    if p.get(extra):
-                        rows.append((extra.replace("_", " ").title(), esc(p[extra])))
+                    if proposal.get(extra):
+                        rows.append((extra.replace("_", " ").title(), esc(proposal[extra])))
                 table_rows = "".join(
                     f"<tr><td style='padding:4px 16px 4px 0;color:#5a6b7a;font-weight:600;"
-                    f"white-space:nowrap;vertical-align:top;width:130px;'>{esc(k)}</td>"
-                    f"<td style='padding:4px 0;'>{v}</td></tr>" for k, v in rows)
+                    f"white-space:nowrap;vertical-align:top;width:130px;'>{esc(key)}</td>"
+                    f"<td style='padding:4px 0;'>{value}</td></tr>"
+                    for key, value in rows
+                )
                 card = (
                     f"<div style='border:1px solid #e3e9f0;border-left:4px solid {color};"
                     f"border-radius:8px;padding:10px 14px;background:#ffffff;margin:2px 0;'>"
                     f"<table style='border-collapse:collapse;font-size:14px;'>{table_rows}</table>"
                 )
-                s = p.get("summary")
-                if s:
+                summary = proposal.get("summary")
+                if summary:
                     card += (
                         f"<div style='margin-top:8px;color:#b3261e;font-weight:600;'>"
-                        f"This will permanently remove: {s.get('skills', 0)} skill(s), "
-                        f"{s.get('projects', 0)} project assignment(s), "
-                        f"{s.get('certifications', 0)} certification(s), "
-                        f"{s.get('manager_links', 0)} manager link(s).</div>"
+                        f"This will permanently remove: {summary.get('skills', 0)} skill(s), "
+                        f"{summary.get('projects', 0)} project assignment(s), "
+                        f"{summary.get('certifications', 0)} certification(s), "
+                        f"{summary.get('manager_links', 0)} manager link(s).</div>"
                     )
-                if p.get("warning"):
-                    card += (f"<div style='margin-top:6px;color:#b3261e;font-size:13px;'>"
-                             f"\u26a0\ufe0f {esc(p['warning'])}</div>")
-                card += "</div>"
-                st.markdown(card, unsafe_allow_html=True)
+                if proposal.get("warning"):
+                    card += (
+                        f"<div style='margin-top:6px;color:#b3261e;font-size:13px;'>"
+                        f"⚠️ {esc(proposal['warning'])}</div>"
+                    )
+                st.markdown(card + "</div>", unsafe_allow_html=True)
 
-            # Show project_type as a selectable dropdown for project proposals
             for i, proposal in enumerate(proposals):
                 if proposal.get("table") == "employee_projects" and "project_type" in proposal:
                     current_type = proposal.get("project_type", "main")
-                    selected_type = st.selectbox(
+                    proposal["project_type"] = st.selectbox(
                         f"Project type — {proposal.get('project', 'project')}",
                         options=["main", "support"],
                         index=0 if current_type == "main" else 1,
                         key=f"project_type_select_{i}",
                     )
-                    proposal["project_type"] = selected_type
                 _proposal_card(proposal)
+
             action = "Confirm Changes" if len(proposals) > 1 else (
-                "Confirm Delete" if proposals[0]["operation"] == "DELETE" else "Confirm Update"
+                "Confirm Delete" if proposals[0]["operation"] == "DELETE"
+                else "Confirm Update"
             )
             confirm_col, cancel_col = st.columns(2)
             if confirm_col.button(action, type="primary", key="confirm_management"):
-                confirmed_email = get_user_email() or "unknown"
                 try:
-                    results = repo.execute_proposals(proposals, confirmed_by=confirmed_email)
-                    st.cache_data.clear()  # writes are live: refresh every page immediately
-                    # Feed the verified outcome back into the shared agent
-                    # session so follow-up turns know what really happened.
+                    results = repo.execute_proposals(
+                        proposals, confirmed_by="community-cloud-shared-access"
+                    )
+                    st.cache_data.clear()
                     if "agent_session" in st.session_state:
                         st.session_state.agent_session.record_execution(
                             [r for r in results if r.get("status") == "SUCCESS"],
-                            actor=confirmed_email,
+                            actor="community-cloud-shared-access",
                         )
                     ok = [r for r in results if r.get("status") == "SUCCESS"]
                     failed = [r for r in results if r.get("status") != "SUCCESS"]
                     if ok:
                         st.success(
                             f"SUCCESS: {len(ok)} change(s) committed and verified "
-                            f"by {confirmed_email}."
+                            "by the app."
                         )
-                    for r in failed:
-                        p = r.get("proposal", {})
+                    for result in failed:
+                        proposal = result.get("proposal", {})
                         st.warning(
-                            f"Skipped {p.get('operation')} on {p.get('table')} "
-                            f"for {p.get('employee_id')}: {r.get('error', 'unknown error')}"
+                            f"Skipped {proposal.get('operation')} on "
+                            f"{proposal.get('table')} for "
+                            f"{proposal.get('employee_id')}: "
+                            f"{result.get('error', 'unknown error')}"
                         )
                     st.session_state.management_proposal = None
                     st.session_state.management_proposals = []
                     st.session_state.management_message = None
                     st.session_state.management_trace = []
-                except Exception as exc:                        # noqa: BLE001
+                except Exception as exc:  # noqa: BLE001
                     st.error(f"The change was not applied: {exc}")
             if cancel_col.button("Cancel", key="cancel_management"):
                 st.session_state.management_proposal = None
