@@ -809,8 +809,14 @@ with profile_tab:
     else:  # Team structure view — team-lead-wise, in the organisation's team order
         import html as _ts_html
 
+        def _ts_text(value) -> str:
+            if value is None or pd.isna(value):
+                return ""
+            text = str(value).strip()
+            return "" if text.casefold() == "nan" else text
+
         def _ts_esc(v) -> str:
-            return _ts_html.escape(str(v) if v is not None else "")
+            return _ts_html.escape(_ts_text(v))
 
         structure = c_team_structure()
         directory = c_employee_directory()
@@ -824,8 +830,8 @@ with profile_tab:
             # The same role string the Employee profile shows: senior
             # positions combine position and designation, other positions
             # show as-is, designation is the fallback.
-            pos = str(rec.get("position") or "").strip()
-            des = str(rec.get("designation") or "").strip()
+            pos = _ts_text(rec.get("position"))
+            des = _ts_text(rec.get("designation"))
             if pos and "senior" in pos.lower():
                 return f"{pos} - {des}" if des else pos
             return pos or des
@@ -840,10 +846,10 @@ with profile_tab:
                     + "</div>")
 
         def _is_team_lead(rec) -> bool:
-            return "team lead" in str(rec.get("position") or "").lower()
+            return "team lead" in _ts_text(rec.get("position")).lower()
 
         def _is_manager(rec) -> bool:
-            return "manager" in str(rec.get("position") or "").lower()
+            return "manager" in _ts_text(rec.get("position")).lower()
 
         # lead_id -> direct-report rows (real reporting links only)
         members_by_lead: dict[str, list] = {}
@@ -853,7 +859,7 @@ with profile_tab:
         # Team directory from the team column, keyed without the ' Team' suffix
         team_dir: dict[str, list] = {}
         for _, r in directory.iterrows():
-            team = str(r.get("team") or "").replace(" Team", "").strip()
+            team = _ts_text(r.get("team")).replace(" Team", "").strip()
             if team:
                 team_dir.setdefault(team, []).append(r)
 
@@ -865,8 +871,8 @@ with profile_tab:
         # directory — not repeated inside the team sections below.
         leadership = sorted(
             [r for _, r in directory.iterrows()
-             if ("manager" in str(r.get("position") or "").lower()
-                 or "operational" in str(r.get("position") or "").lower())
+             if ("manager" in _ts_text(r.get("position")).lower()
+                 or "operational" in _ts_text(r.get("position")).lower())
              and not _is_team_lead(r)],
             key=lambda r: str(r["employee_id"]))
         hr_people = sorted(team_dir.get("HR", []),
@@ -900,7 +906,7 @@ with profile_tab:
             st.markdown(f"#### {team} Team")
             if leads:
                 st.caption("Team lead" + ("s" if len(leads) > 1 else "") + ": "
-                           + ", ".join(str(r["name"]) for r in leads))
+                           + ", ".join(_ts_text(r["name"]) for r in leads))
             else:
                 st.caption("No team lead recorded")
 
@@ -922,7 +928,8 @@ with profile_tab:
                 pair = st.columns(2)
                 for col, (lid, lead, rows) in zip(pair, lead_groups[i:i + 2]):
                     with col:
-                        lead_line = (f"**{lead.get('name', lid)}** · "
+                        lead_name = _ts_text(lead.get("name")) or lid
+                        lead_line = (f"**{lead_name}** · "
                                      f"{_role(lead) or 'Team Lead'}"
                                      f" — {len(rows)} member(s)")
                         st.markdown(lead_line)
