@@ -42,6 +42,22 @@ DATAPATTERN_COLORS = {
     "background": "#ffffff",   # White
 }
 
+
+def _display_text(value) -> str:
+    if value is None or pd.isna(value):
+        return ""
+    text = str(value).strip()
+    return "" if text.casefold() == "nan" else text
+
+
+def _employee_role(employee) -> str:
+    position = _display_text(employee.get("position"))
+    designation = _display_text(employee.get("designation"))
+    if position and "senior" in position.lower():
+        return f"{position} - {designation}" if designation else position
+    return position or designation
+
+
 # Custom CSS for DataPattern branding - ALL TEXT ELEMENTS
 st.markdown("""
 <style>
@@ -733,14 +749,7 @@ with profile_tab:
         if choice:
             profile = c_employee_360(labels[choice])
             st.markdown(f"### {profile['name']}")
-            position = profile.get("position") or ""
-            designation = profile.get("designation") or ""
-            if position and "senior" in position.lower():
-                role = f"{position} - {designation}" if designation else position
-            elif position:
-                role = position
-            else:
-                role = designation
+            role = _employee_role(profile)
             details = st.columns([3, 1, 2, 2, 2])
             details[0].markdown(f"**Email**  \n{profile['email'] or '—'}")
             details[1].markdown(f"**ID**  \n{profile['employee_id']}")
@@ -809,14 +818,8 @@ with profile_tab:
     else:  # Team structure view — team-lead-wise, in the organisation's team order
         import html as _ts_html
 
-        def _ts_text(value) -> str:
-            if value is None or pd.isna(value):
-                return ""
-            text = str(value).strip()
-            return "" if text.casefold() == "nan" else text
-
         def _ts_esc(v) -> str:
-            return _ts_html.escape(_ts_text(v))
+            return _ts_html.escape(_display_text(v))
 
         structure = c_team_structure()
         directory = c_employee_directory()
@@ -827,17 +830,10 @@ with profile_tab:
         TEAM_ORDER = ["Data", "Gen AI", "Cyber", "Sales", "Presales", "Resourcing"]
 
         def _role(rec) -> str:
-            # The same role string the Employee profile shows: senior
-            # positions combine position and designation, other positions
-            # show as-is, designation is the fallback.
-            pos = _ts_text(rec.get("position"))
-            des = _ts_text(rec.get("designation"))
-            if pos and "senior" in pos.lower():
-                return f"{pos} - {des}" if des else pos
-            return pos or des
+            return _employee_role(rec)
 
         def _card(rec, name: str, subtitle=None) -> str:
-            sub = _role(rec) if subtitle is None else subtitle
+            sub = (_role(rec) or "Role not recorded") if subtitle is None else subtitle
             return ("<div style='border-left:3px solid #d7e3ef;background:#f8f9fa;"
                     "border-radius:6px;padding:8px 12px;margin:4px 0;'>"
                     f"<b style='color:#033c67;'>{_ts_esc(name)}</b>"
@@ -846,10 +842,10 @@ with profile_tab:
                     + "</div>")
 
         def _is_team_lead(rec) -> bool:
-            return "team lead" in _ts_text(rec.get("position")).lower()
+            return "team lead" in _display_text(rec.get("position")).lower()
 
         def _is_manager(rec) -> bool:
-            return "manager" in _ts_text(rec.get("position")).lower()
+            return "manager" in _display_text(rec.get("position")).lower()
 
         # lead_id -> direct-report rows (real reporting links only)
         members_by_lead: dict[str, list] = {}
@@ -859,7 +855,7 @@ with profile_tab:
         # Team directory from the team column, keyed without the ' Team' suffix
         team_dir: dict[str, list] = {}
         for _, r in directory.iterrows():
-            team = _ts_text(r.get("team")).replace(" Team", "").strip()
+            team = _display_text(r.get("team")).replace(" Team", "").strip()
             if team:
                 team_dir.setdefault(team, []).append(r)
 
@@ -871,8 +867,8 @@ with profile_tab:
         # directory — not repeated inside the team sections below.
         leadership = sorted(
             [r for _, r in directory.iterrows()
-             if ("manager" in _ts_text(r.get("position")).lower()
-                 or "operational" in _ts_text(r.get("position")).lower())
+             if ("manager" in _display_text(r.get("position")).lower()
+                 or "operational" in _display_text(r.get("position")).lower())
              and not _is_team_lead(r)],
             key=lambda r: str(r["employee_id"]))
         hr_people = sorted(team_dir.get("HR", []),
@@ -906,7 +902,7 @@ with profile_tab:
             st.markdown(f"#### {team} Team")
             if leads:
                 st.caption("Team lead" + ("s" if len(leads) > 1 else "") + ": "
-                           + ", ".join(_ts_text(r["name"]) for r in leads))
+                           + ", ".join(_display_text(r["name"]) for r in leads))
             else:
                 st.caption("No team lead recorded")
 
@@ -928,7 +924,7 @@ with profile_tab:
                 pair = st.columns(2)
                 for col, (lid, lead, rows) in zip(pair, lead_groups[i:i + 2]):
                     with col:
-                        lead_name = _ts_text(lead.get("name")) or lid
+                        lead_name = _display_text(lead.get("name")) or lid
                         lead_line = (f"**{lead_name}** · "
                                      f"{_role(lead) or 'Team Lead'}"
                                      f" — {len(rows)} member(s)")

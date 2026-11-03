@@ -1025,7 +1025,7 @@ def search_employees(name: str, limit: int = 10) -> pd.DataFrame:
     turning 'Siva' into a specific person — it may return several."""
     return q(
         """
-        SELECT e.employee_id, e.name, e.email,
+        SELECT e.employee_id, e.name, e.email, e.position, e.team,
                (SELECT COUNT(*) FROM employee_skills s WHERE s.employee_id = e.employee_id) AS skills,
                (SELECT COUNT(*) FROM employee_projects p WHERE p.employee_id = e.employee_id) AS projects
         FROM employees e

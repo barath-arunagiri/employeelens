@@ -36,9 +36,11 @@ TOOLS = [
     {
         "name": "get_employee_360",
         "description": (
-            "Everything known about one person: skills, projects, certifications, who "
-            "they report to and their direct reports. Needs an exact employee_id, so "
-            "call search_employees first if you only have a name."
+            "Detailed employee profile including skills, projects, certifications, "
+            "manager and direct reports. Use only when the user asks for a full profile "
+            "or for details not available from a narrower tool. Do not present every "
+            "returned field; answer only the user's question. Needs an exact "
+            "employee_id, so call search_employees first if you only have a name."
         ),
         "input_schema": {
             "type": "object",
