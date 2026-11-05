@@ -361,13 +361,6 @@ with st.sidebar:
         )
     
     st.caption("Employee data assistant")
-    st.caption(f"Signed in: {st.session_state.authenticated_email}")
-    if st.button("Sign out", key="admin_sign_out"):
-        st.session_state.pop("authenticated_email", None)
-        st.session_state.pop("authenticated_at", None)
-        st.session_state.pop("auth_session_version", None)
-        st.rerun()
-
     st.metric("Employees", STATS["employees"])
     cols = st.columns(2)
     cols[0].metric("With skills", STATS["with_skills"])
@@ -412,6 +405,14 @@ with st.sidebar:
     st.divider()
     st.caption("All data is stored in Unity Catalog (workspace.employeelens) "
                "and persists across app restarts.")
+
+    st.divider()
+    st.caption(f"Signed in: {st.session_state.authenticated_email}")
+    if st.button("Sign out", key="admin_sign_out"):
+        st.session_state.pop("authenticated_email", None)
+        st.session_state.pop("authenticated_at", None)
+        st.session_state.pop("auth_session_version", None)
+        st.rerun()
 
 
 # -------------------------------------------------------------------- tabs
