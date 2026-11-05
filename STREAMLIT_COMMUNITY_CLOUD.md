@@ -63,9 +63,12 @@ GRANT SELECT ON TABLE workspace.employeelens.change_audit_log
   TO `<cloud-service-principal-application-id>`;
 ```
 
-The login accepts only `baratha@datapattern.ai` and
-`mirthular@datapattern.ai`, and checks the submitted employee ID against that
-email in the employee table. Successful changes are attributed to the
+Bootstrap login access is initially granted to `baratha@datapattern.ai` and
+`mirthular@datapattern.ai`. Active HR admins can then grant or revoke access
+from **Data Management**. A grant requires an employee email and employee ID
+that match a row in the employee table, and every access change requires
+explicit confirmation. The last active admin cannot be revoked. Access grants
+are stored in Unity Catalog, and successful changes are attributed to the
 signed-in email in the audit log.
 
 An employee ID is an identifier, not a strong secret; it may be visible to
@@ -73,6 +76,50 @@ app users or discoverable elsewhere. This login is a basic access gate, not
 multi-factor authentication. Keep the Community Cloud app private and restrict
 its viewers to trusted users. Use Google OIDC or another identity provider
 instead if stronger authentication is required.
+
+Create the admin access table and bootstrap the initial accounts once as a
+catalog/schema owner:
+
+```sql
+CREATE TABLE IF NOT EXISTS workspace.employeelens.app_admin_access (
+  email STRING NOT NULL,
+  active BOOLEAN NOT NULL,
+  granted_by STRING,
+  granted_at TIMESTAMP,
+  revoked_by STRING,
+  revoked_at TIMESTAMP
+)
+USING DELTA;
+
+MERGE INTO workspace.employeelens.app_admin_access AS target
+USING (
+  SELECT lower(email) AS email
+  FROM workspace.employeelens.employee_master
+  WHERE lower(email) IN (
+    'baratha@datapattern.ai',
+    'mirthular@datapattern.ai'
+  )
+) AS source
+ON lower(target.email) = source.email
+WHEN MATCHED THEN UPDATE SET
+  active = true,
+  granted_by = 'bootstrap',
+  granted_at = current_timestamp(),
+  revoked_by = NULL,
+  revoked_at = NULL
+WHEN NOT MATCHED THEN INSERT (
+  email, active, granted_by, granted_at, revoked_by, revoked_at
+) VALUES (
+  source.email, true, 'bootstrap', current_timestamp(), NULL, NULL
+);
+```
+
+Grant the Community Cloud service principal access to this table:
+
+```sql
+GRANT SELECT, MODIFY ON TABLE workspace.employeelens.app_admin_access
+  TO `<cloud-service-principal-application-id>`;
+```
 
 The service principal must have `MODIFY` on only the tables written by the
 confirmed proposal workflow:
@@ -109,9 +156,8 @@ principal; it does not use a personal access token.
 ## 5. Enable authenticated Data Management
 
 The example's `[databricks]` section sets `data_management_enabled = true`.
-The login screen allows only the two approved HR administrator email
-addresses and verifies the matching employee ID from the employee table.
-There are no additional SMTP or authentication-table settings.
+The login screen verifies an active admin grant and the matching employee ID.
+Authorized admins can manage future login grants in Data Management.
 
 The Databricks service principal needs the table-level `MODIFY` grants listed
 above. Writes continue to use proposal review and explicit confirmation; the

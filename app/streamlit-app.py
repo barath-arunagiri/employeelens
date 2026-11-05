@@ -562,9 +562,124 @@ with management_tab:
     st.markdown("#### Data Management")
     st.caption("Use one natural-language request for a change or read-only audit history. Changes require confirmation.")
     st.warning(
-        "Only the approved HR administrator emails with their matching employee "
-        "IDs can access employee data and confirm changes."
+        "Only signed-in HR admins can access employee data, confirm changes, "
+        "and manage login access."
     )
+
+    from src import auth as admin_auth
+
+    with st.expander("Manage HR administrator login access"):
+        try:
+            active_admins = admin_auth.list_admins()
+        except Exception as exc:
+            active_admins = None
+            st.error(
+                f"Could not load admin access ({type(exc).__name__}). "
+                "Check the Unity Catalog admin-access table and permissions."
+            )
+
+        if active_admins is not None:
+            if active_admins:
+                st.dataframe(
+                    pd.DataFrame(active_admins),
+                    hide_index=True,
+                    use_container_width=True,
+                )
+            else:
+                st.info("No active admin grants are recorded.")
+
+            grant_col, revoke_col = st.columns(2)
+            with grant_col:
+                with st.form("grant_admin_access"):
+                    st.markdown("**Grant access**")
+                    grant_email = st.text_input(
+                        "Employee email", key="grant_admin_email"
+                    )
+                    grant_employee_id = st.text_input(
+                        "Employee ID", key="grant_admin_employee_id"
+                    )
+                    submit_grant = st.form_submit_button("Review grant")
+                if submit_grant:
+                    st.session_state.pending_admin_access = {
+                        "operation": "grant",
+                        "email": grant_email.strip().lower(),
+                        "employee_id": grant_employee_id.strip(),
+                    }
+
+            with revoke_col:
+                if active_admins:
+                    admin_emails = [row["email"] for row in active_admins]
+                    with st.form("revoke_admin_access"):
+                        st.markdown("**Revoke access**")
+                        revoke_email = st.selectbox(
+                            "Admin account", admin_emails,
+                            key="revoke_admin_email",
+                        )
+                        submit_revoke = st.form_submit_button("Review revocation")
+                    if submit_revoke:
+                        st.session_state.pending_admin_access = {
+                            "operation": "revoke",
+                            "email": revoke_email,
+                        }
+
+            pending_access = st.session_state.get("pending_admin_access")
+            if pending_access:
+                if pending_access["operation"] == "grant":
+                    st.warning(
+                        f"Grant admin login access to "
+                        f"**{pending_access['email']}** using employee ID "
+                        f"**{pending_access['employee_id']}**?"
+                    )
+                else:
+                    st.warning(
+                        f"Revoke admin login access for "
+                        f"**{pending_access['email']}**? This takes effect on "
+                        "their next app request."
+                    )
+                confirm_access, cancel_access = st.columns(2)
+                if confirm_access.button(
+                    "Confirm access change", type="primary",
+                    key="confirm_admin_access",
+                ):
+                    try:
+                        actor = st.session_state.authenticated_email
+                        if pending_access["operation"] == "grant":
+                            admin_auth.grant_admin_access(
+                                actor,
+                                pending_access["email"],
+                                pending_access["employee_id"],
+                            )
+                            st.session_state.admin_access_notice = (
+                                f"Admin access granted to {pending_access['email']}."
+                            )
+                        else:
+                            admin_auth.revoke_admin_access(
+                                actor, pending_access["email"]
+                            )
+                            st.session_state.admin_access_notice = (
+                                f"Admin access revoked for {pending_access['email']}."
+                            )
+                        st.session_state.pop("pending_admin_access", None)
+                        if (pending_access["operation"] == "revoke"
+                                and pending_access["email"] == actor):
+                            st.session_state.pop("authenticated_email", None)
+                            st.session_state.pop("authenticated_at", None)
+                            st.session_state.pop("auth_session_version", None)
+                        st.rerun()
+                    except (ValueError, PermissionError) as exc:
+                        st.error(str(exc))
+                    except Exception as exc:
+                        st.error(
+                            f"Admin access change failed ({type(exc).__name__}). "
+                            "Check table permissions and retry."
+                        )
+                if cancel_access.button("Cancel access change",
+                                        key="cancel_admin_access"):
+                    st.session_state.pop("pending_admin_access", None)
+                    st.rerun()
+
+            if st.session_state.get("admin_access_notice"):
+                st.success(st.session_state.pop("admin_access_notice"))
 
     if not DATA_MANAGEMENT_ENABLED:
         st.info("Data Management is disabled by configuration. Writes are disabled.")
