@@ -167,6 +167,47 @@ def render_login(st) -> bool:
     st.session_state.pop("authenticated_at", None)
     st.session_state.pop("auth_session_version", None)
 
+    st.markdown(
+        """
+        <style>
+        [data-testid="stMainBlockContainer"] {
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            max-width: 560px;
+            min-height: 100vh;
+            padding: 2rem 1rem !important;
+            margin: 0 auto;
+        }
+        [data-testid="stMainBlockContainer"] h1 {
+            font-size: clamp(1.7rem, 4vw, 2.2rem);
+            margin-bottom: 0.4rem;
+            text-align: center;
+        }
+        [data-testid="stMainBlockContainer"] [data-testid="stCaptionContainer"] {
+            margin-bottom: 1rem;
+            text-align: center;
+        }
+        [data-testid="stMainBlockContainer"] [data-testid="stForm"] {
+            border-radius: 12px;
+            box-shadow: 0 8px 28px rgba(3, 60, 103, 0.1);
+            padding: 1.5rem;
+        }
+        @media (max-width: 640px) {
+            [data-testid="stMainBlockContainer"] {
+                min-height: calc(100vh - 1rem);
+                padding: 1rem !important;
+            }
+            [data-testid="stMainBlockContainer"] [data-testid="stForm"] {
+                padding: 1rem;
+            }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     locked_until = int(st.session_state.get("login_locked_until", 0) or 0)
     st.title("Employeelens HR Login")
     st.caption(
