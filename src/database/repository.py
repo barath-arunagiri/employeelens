@@ -1026,6 +1026,18 @@ def search_employees(name: str, limit: int = 10) -> pd.DataFrame:
     return q(
         """
         SELECT e.employee_id, e.name, e.email, e.position, e.team,
+               COALESCE(
+                   (SELECT concat_ws(
+                       ', ',
+                       sort_array(collect_set(
+                           concat(p.project, ' (',
+                                  COALESCE(p.project_type, 'main'), ')')
+                       ))
+                   )
+                    FROM employee_projects p
+                    WHERE p.employee_id = e.employee_id),
+                   ''
+               ) AS project_assignments,
                (SELECT COUNT(*) FROM employee_skills s WHERE s.employee_id = e.employee_id) AS skills,
                (SELECT COUNT(*) FROM employee_projects p WHERE p.employee_id = e.employee_id) AS projects
         FROM employees e

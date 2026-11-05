@@ -19,7 +19,8 @@ TOOLS = [
         "description": (
             "Find people by partial name, email or employee id. ALWAYS use this first "
             "when the user names a person, because several employees may share a first "
-            "name. Returns candidates with their employee_id."
+            "name. Returns candidates with their employee_id, position, team, and "
+            "recorded project assignments."
         ),
         "input_schema": {
             "type": "object",
