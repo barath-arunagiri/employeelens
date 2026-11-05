@@ -34,6 +34,11 @@ from src.database import repository as repo                                     
 
 st.set_page_config(page_title=APP_NAME, page_icon="🔎", layout="wide")
 
+from src.auth import render_login  # noqa: E402
+
+if not render_login(st):
+    st.stop()
+
 # DataPattern branding colors
 DATAPATTERN_COLORS = {
     "primary": "#033c67",      # Dark blue (company name)
@@ -356,6 +361,12 @@ with st.sidebar:
         )
     
     st.caption("Employee data assistant")
+    st.caption(f"Signed in: {st.session_state.authenticated_email}")
+    if st.button("Sign out", key="admin_sign_out"):
+        st.session_state.pop("authenticated_email", None)
+        st.session_state.pop("authenticated_at", None)
+        st.session_state.pop("auth_session_version", None)
+        st.rerun()
 
     st.metric("Employees", STATS["employees"])
     cols = st.columns(2)
@@ -550,8 +561,8 @@ with management_tab:
     st.markdown("#### Data Management")
     st.caption("Use one natural-language request for a change or read-only audit history. Changes require confirmation.")
     st.warning(
-        "Anyone who can access this app can propose and confirm changes to "
-        "employee data. Only deploy where every viewer is trusted."
+        "Only the approved HR administrator emails with their matching employee "
+        "IDs can access employee data and confirm changes."
     )
 
     if not DATA_MANAGEMENT_ENABLED:
@@ -694,13 +705,14 @@ with management_tab:
             if confirm_col.button(action, type="primary", key="confirm_management"):
                 try:
                     results = repo.execute_proposals(
-                        proposals, confirmed_by="community-cloud-shared-access"
+                        proposals,
+                        confirmed_by=st.session_state.authenticated_email,
                     )
                     st.cache_data.clear()
                     if "agent_session" in st.session_state:
                         st.session_state.agent_session.record_execution(
                             [r for r in results if r.get("status") == "SUCCESS"],
-                            actor="community-cloud-shared-access",
+                            actor=st.session_state.authenticated_email,
                         )
                     ok = [r for r in results if r.get("status") == "SUCCESS"]
                     failed = [r for r in results if r.get("status") != "SUCCESS"]
