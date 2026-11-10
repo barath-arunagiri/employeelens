@@ -167,12 +167,23 @@ def render_login(st) -> bool:
     st.session_state.pop("authenticated_at", None)
     st.session_state.pop("auth_session_version", None)
 
-    login_column = st.columns([1, 1, 1])[1]
-    with login_column:
-        st.markdown(
-            "<style>h1 { font-size: 2rem; }</style>",
-            unsafe_allow_html=True,
-        )
+    st.markdown(
+        """
+        <style>
+        .st-key-employeelens_login_panel {
+            box-sizing: border-box;
+            width: 100%;
+            max-width: 440px;
+            margin: clamp(1.5rem, 14vh, 7rem) auto 0;
+        }
+        .st-key-employeelens_login_panel h1 {
+            font-size: 1.8rem;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+    with st.container(key="employeelens_login_panel"):
         st.title("Employeelens HR Login")
         st.caption(
             "Sign in with an employee account that has been granted HR admin access."
