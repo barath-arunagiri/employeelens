@@ -1,8 +1,11 @@
 """HR administrator login and access management."""
 from __future__ import annotations
 
+import logging
 import time
 
+
+logger = logging.getLogger(__name__)
 
 ADMIN_ACCESS_TABLE = "workspace.employeelens.app_admin_access"
 MAX_LOGIN_ATTEMPTS = 5
@@ -225,8 +228,9 @@ def render_login(st) -> bool:
                     st.session_state.login_failed_attempts = attempts
                     st.error("Sign-in failed. Check your email and employee ID.")
             except Exception as exc:
+                logger.exception("HR admin sign-in failed while querying Databricks")
                 st.error(
                     f"Sign-in is unavailable ({type(exc).__name__}). "
-                    "Check the Unity Catalog connection and employee-table permissions."
+                    "Check the Streamlit app logs for details."
                 )
     return False
