@@ -184,22 +184,23 @@ THE DATA
 Tables in workspace.employeelens: employees (employee_id, name, email, position, team, designation, location; department/employment_status/joining_date exist but are mostly empty), employee_skills (skill, category, qualifier), employee_projects (project, client, technologies, role, project_type main|support), employee_certifications (certification, vendor), employee_managers (employee_id, reporting_id), employee_vendor_ownership (employee_id, vendor_ownership — which vendor(s) own/lease this employee, e.g. 'CapG, TechM, TCS'; join to employees on employee_id).
 Skill categories are exactly: Language, Database, AI, Tool, Platform, Security, Design, BI, Cloud, OS, Other.
 Teams are exactly: Cyber, Data, Gen AI, HR, Presales, Resourcing, Sales Team.
-HR contact: Mirthula Rajasekaran (employee_id 2020128, HR Executive) is THE company HR — when the user asks 'who is our HR', 'our HR person', 'contact HR' or similar, answer her directly without searching for an HR role.
+HR contact: when the user asks "who is our HR", "our HR person", "contact HR" or similar, use search_employees to verify Mirthula Rajasekaran (employee_id 2020128) and answer from the returned employee record. Do not rely on this prompt alone as evidence for employee facts.
 Projects: 'Phibro Genie' is part of 'Phibro' (same Phibro client, a sub-project) — when the user asks about the Phibro project, include the Phibro Genie people too unless they narrow to one of them, and say you did. Change requests (add/remove/move on a project) must still use the exact project name the user gave.
 
 COVERAGE
 - Skill information may be missing for some employees. When nobody matches a skill, mention that the search only covers people with recorded skills.
 
 HOW TO WORK
-- The user may call the company 'Datapattern', 'DataPattern', 'the company', 'our organisation', or just 'everyone' — these mean the ENTIRE employee dataset, never a team, skill or project filter. E.g. "Datapattern's top skills" = top skills across all employees; "everyone in Datapattern on the Phibro project" = all employees on that project. Drop the company word from the query — do not search for it.
+- The user may call the company 'Datapattern', 'DataPattern', 'the company', 'our organisation', or just 'everyone'. Treat that company reference as the full-organization scope, not as a filter of its own; preserve any explicit team, skill, project, or other filters in the same request. E.g. "Datapattern's top skills" = top skills across all employees; "everyone in Datapattern on the Phibro project" = employees on that project across the organization. Do not search for the company name as a data value.
 - Ground every fact in tool results from this conversation. Never answer an employee-data question from memory — call a tool first.
 - When the user names a person, resolve them with search_employees (names are ambiguous; several people share first names). If several match, list them (Name | ID | Team) and ask which one they mean.
-- Match retrieval and answer detail to the exact question. For a simple identity question such as "Who is Sivanandhini?", resolve the person with search_employees and answer in one concise sentence with their name, ID, position, team, and recorded project assignment(s) when available. If project_assignments is empty, say no project assignment is recorded. Do not list skills, certifications, or reports unless asked. Do not call an assignment "current work" or claim a person is actively working on it; the project table records assignments, not active-work status. Use get_employee_360 only when the user asks for a full profile or requests profile details not returned by the search.
+- Match retrieval and answer detail to the exact question. For a simple identity question such as "Who is Sivanandhini?", resolve the person with search_employees and give a concise directory summary with their name, ID, position, and team; include recorded project assignment(s) only when available. If project_assignments is empty, say no project assignment is recorded. For a question asking for a specific fact, return only that fact. Do not list skills, certifications, or reports unless asked. Do not call an assignment "current work" or claim a person is actively working on it; the project table records assignments, not active-work status. Use get_employee_360 only when the user asks for a full profile or requests profile details not returned by the search.
 - For a specific question, return only the requested fact (for example, location, manager, project, or skill). For follow-ups, add only the newly requested information rather than repeating the profile. A full profile should include the requested sections, not automatically every field returned by a tool.
 - find_employees answers combined filters (skills, certifications, projects, teams, positions, manager) in one call; project_type narrows main vs support.
 - get_team_structure answers 'team lead wise members', 'who reports to whom', and org-structure questions in ONE call — leads with their members grouped; display grouped by lead with each lead's member count.
 - run_sql is the catch-all for anything else (cross-table counts, distinct values, unusual filters). It is a guarded single read-only SELECT; a LIMIT is always applied.
 - get_audit_history answers change-history questions ("who changed X", "what changed on <id>", recent changes).
+- Certification results may contain both verified and unverified claims. For certification questions, use run_sql to retrieve the certification rows and their verified status; the generic find_employees tool does not return certification-level verification details. When the user requests verified/trustworthy certifications, filter to c.verified = 'true'. When they ask for all recorded claims, include both and clearly label unverified ones. Never describe an unverified claim as confirmed.
 
 CHANGES (always two-step)
 - Change requests go through the propose_* tools. They prepare proposals — they NEVER write. A human confirms every change in the UI, and the backend re-reads and verifies after confirmation.
@@ -382,6 +383,15 @@ def _openai_tools(tools: list[dict] = TOOLS) -> list[dict]:
         }
         for tool in tools
     ]
+
+
+def _proposal_key(proposal: dict) -> str:
+    """Build a stable key for the exact proposed change, including its target."""
+    normalized = dict(proposal)
+    normalized["new_value"] = str(
+        proposal.get("new_value", "")
+    ).strip().casefold()
+    return json.dumps(normalized, sort_keys=True, default=str)
 
 
 class PeopleLensAgent:
@@ -683,13 +693,9 @@ class PeopleLensAgent:
         # queries the DATABASE, which cannot see proposals prepared earlier
         # in THIS request but not yet confirmed — so e.g. seven identical
         # skill proposals could all pass the check and all execute once
-        # confirmed. Deduplicate identical proposals here so duplicate
-        # cards can never reach the user.
-        seen_proposals = {
-            (p.get("table"), p.get("operation"), p.get("field"),
-             str(p.get("new_value", "")).strip().lower())
-            for p in proposals
-        }
+        # confirmed. Deduplicate exact changes, including their employee and
+        # record-specific fields, so equal changes to different people survive.
+        seen_proposals = {_proposal_key(p) for p in proposals}
         for call in m.tool_calls:
             try:
                 args = json.loads(call.function.arguments or "{}")
@@ -737,10 +743,7 @@ class PeopleLensAgent:
             # batch; it is skipped and the model mentions it.
             if "error" not in output and name in MANAGEMENT_DISPATCH:
                 for p in output.get("rows", []):
-                    key = (
-                        p.get("table"), p.get("operation"), p.get("field"),
-                        str(p.get("new_value", "")).strip().lower(),
-                    )
+                    key = _proposal_key(p)
                     if key in seen_proposals:
                         continue
                     seen_proposals.add(key)

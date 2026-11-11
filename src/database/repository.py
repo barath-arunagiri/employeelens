@@ -806,13 +806,17 @@ def execute_proposal(proposal: dict, confirmed_by: str = "unknown") -> dict:
         
         elif table == "employee_certifications" and operation == "INSERT":
             verified_value = proposal.get("verified", "true")
-            verified_bool = verified_value in (True, "true", "True", 1)
+            verified_text = (
+                "true"
+                if verified_value in (True, "true", "True", 1)
+                else "false"
+            )
             uc.execute(
                 "INSERT INTO employee_certifications "
                 "(employee_id, certification, vendor, source, verified, raw_text) "
                 "VALUES (?, ?, ?, ?, ?, ?)",
                 [employee_id, proposal["new_value"], proposal.get("vendor"),
-                 "data_management", verified_bool, proposal["new_value"]],
+                 "data_management", verified_text, proposal["new_value"]],
             )
             verified = uc.fetchval(
                 "SELECT certification FROM employee_certifications WHERE employee_id = ? "

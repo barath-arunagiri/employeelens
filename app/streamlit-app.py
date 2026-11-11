@@ -14,7 +14,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pandas as pd
 import streamlit as st
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -29,8 +28,7 @@ try:
 except StreamlitSecretNotFoundError:
     pass
 
-from src.config import APP_NAME, DATA_MANAGEMENT_ENABLED, DATABRICKS_MODEL, REPORTS_DIR  # noqa: E402
-from src.database import repository as repo                                       # noqa: E402
+from src.config import APP_NAME  # noqa: E402
 
 st.set_page_config(page_title=APP_NAME, page_icon="🔎", layout="wide")
 
@@ -38,6 +36,11 @@ from src.auth import render_login  # noqa: E402
 
 if not render_login(st):
     st.stop()
+
+import pandas as pd  # noqa: E402
+
+from src.config import DATA_MANAGEMENT_ENABLED, DATABRICKS_MODEL, REPORTS_DIR  # noqa: E402
+from src.database import repository as repo  # noqa: E402
 
 # DataPattern branding colors
 DATAPATTERN_COLORS = {
