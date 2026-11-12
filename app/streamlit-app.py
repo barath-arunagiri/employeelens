@@ -41,6 +41,7 @@ import pandas as pd  # noqa: E402
 
 from src.config import DATA_MANAGEMENT_ENABLED, DATABRICKS_MODEL, REPORTS_DIR  # noqa: E402
 from src.database import repository as repo  # noqa: E402
+from src.chat_format import tidy_stream  # noqa: E402
 
 # DataPattern branding colors
 DATAPATTERN_COLORS = {
@@ -229,6 +230,30 @@ st.markdown("""
     .stMarkdown th:first-child,
     .stMarkdown td:first-child {
         width: 1%;
+    }
+
+    /* Chat answer tables only: wrap long text and fit the message width
+       instead of one long unbroken line per cell, so HR never has to
+       scroll sideways. Scoped to chat messages; other tables and the
+       proposal cards keep the rules above. */
+    [data-testid="stChatMessage"] .stMarkdown table,
+    .stChatMessage .stMarkdown table {
+        width: auto;
+        max-width: 100%;
+    }
+    [data-testid="stChatMessage"] .stMarkdown th,
+    [data-testid="stChatMessage"] .stMarkdown td,
+    .stChatMessage .stMarkdown th,
+    .stChatMessage .stMarkdown td {
+        white-space: normal;
+        overflow-wrap: break-word;
+        vertical-align: top;
+    }
+    [data-testid="stChatMessage"] .stMarkdown th:first-child,
+    [data-testid="stChatMessage"] .stMarkdown td:first-child,
+    .stChatMessage .stMarkdown th:first-child,
+    .stChatMessage .stMarkdown td:first-child {
+        width: auto;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -514,11 +539,11 @@ with ask_tab:
                 # The final answer streams progressively; the completed
                 # AgentResult (trace, proposals) arrives via result_holder.
                 answer = st.write_stream(
-                    get_agent().chat_stream(
+                    tidy_stream(get_agent().chat_stream(
                         prompt,
                         session=st.session_state.agent_session,
                         result_holder=holder,
-                    )
+                    ))
                 )
                 result = holder.get("result")
                 trace = result.trace if result else []
