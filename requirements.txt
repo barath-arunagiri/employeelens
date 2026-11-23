@@ -3,5 +3,7 @@ openpyxl>=3.1
 streamlit>=1.40
 python-dotenv>=1.0
 databricks-openai>=0.1.0   # OpenAI-compatible client for Databricks Foundation Model APIs
-databricks-sdk>=0.30.0
+databricks-sdk==0.162.0       # pinned: 0.170.0 (auto-resolved 2026-11-23) broke every parameterized
+                              # statement with BadRequest "could not be processed by the warehouse";
+                              # 0.162.0 is the newest release predating the last known-good deploy
 sqlglot>=25.0               # SQL parse guard for the agent's free-form run_sql tool
